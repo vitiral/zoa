@@ -106,7 +106,7 @@ def readexact(br: io.BytesIO, to: bytearray, length: int):
     length -= len(got)
     to.extend(got)
 
-def from_sab(br: io.BytesIO, num:int = 1, joinTo:Sab = None):
+def from_sab(br: io.BytesIO, joinTo:Sab = None):
   out = None
   join = 0
 
@@ -123,7 +123,7 @@ def from_sab(br: io.BytesIO, num:int = 1, joinTo:Sab = None):
 
     if ty: # is arr
       for _ in range(length):
-        out.append(from_sab(br, 1))
+        out.append(from_sab(br))
     else:  # is data
       readexact(br, out.data, length)
 
