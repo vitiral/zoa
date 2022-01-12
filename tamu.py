@@ -24,7 +24,7 @@ class Sab(object):
     return cls.new_arr(out)
 
   def to_py(self):
-    if self.data: return self.data
+    if self.data: return bytes(self.data)
     out = []
     for v in self.arr:
       out.append(v.to_py())
@@ -64,11 +64,8 @@ def int_from_bytes(b: bytes):
 def write_byte(bw: io.BytesIO, v: int):
   return bw.write(v.to_bytes(1, 'big'))
 
-def write_data(bw: io.BytesIO, data: bytes, join=0):
-  assert join == 0 or join == SAB_JOIN
-  if join: assert len(arr) <= 63
+def write_data(bw: io.BytesIO, data: bytes):
   if len(data) == 0:
-    assert not join
     bw.write(b'\0') # No join bit, arr bit, or length
     return
 
@@ -81,29 +78,26 @@ def write_data(bw: io.BytesIO, data: bytes, join=0):
   write_byte(bw, len(data) - i) # note: not joined
   bw.write(data[i:])
 
-def write_arr(bw: io.BytesIO, arr: list[Sab], join=0):
-  assert join == 0 or join == SAB_JOIN
-  if join: assert len(arr) <= 63
+def write_arr(bw: io.BytesIO, arr: list[Sab]):
   if len(arr) == 0:
     write_byte(bw, SAB_ARR)
     return
 
+  join = SAB_JOIN if len(arr) > 63 else 0
   write_byte(bw, SAB_ARR | join | min(63, len(arr)))
 
   # write out the first 63 values
   i = 0
-  while i < 63 and i < len(arr):
+  while i < 64 and i < len(arr):
+    print("i", i)
     v = arr[i]
-    if v.data  is not None:  write_data(bw, v.data)
+    if v.data  is not None: write_data(bw, v.data)
     elif v.arr is not None: write_arr(bw, v.arr)
     else: raise ValueError(v)
     i += 1
-  if i == len(arr): return
 
-  # write out the remaining values in 63 block chunks
-  while len(arr) - i > 0:
-    write_arr(bw, arr[i:i+63], join=SAB_JOIN)
-    i += min(63, len(arr) - i)
+  if i == len(arr): return
+  write_arr(bw, arr[64:])
 
 def readexact(br: io.BytesIO, to: bytearray, length: int):
   while length:
@@ -133,5 +127,6 @@ def from_sab(br: io.BytesIO, num:int = 1, joinTo:Sab = None):
     out.arr.append(from_sab(br))
 
   if SAB_JOIN & ty:
+    print("??? join")
     from_sab(br, num=1, joinTo=out)
   return out

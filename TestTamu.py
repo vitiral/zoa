@@ -10,6 +10,7 @@ def assert_roundtrip(v):
   result = result_sab.to_py()
   pp(v)
   pp(result)
+  print(f'len: {len(v)} == {len(result)}')
   assert v == result
 
 class TestSan(unittest.TestCase):
@@ -59,8 +60,7 @@ class TestSan(unittest.TestCase):
     assert r[129:] == b[126:]
 
   def test_long_round(self):
-    b = b'0123456789' * 15
-    a = [b, b, [], b'hi', [b'one', b'two', b] ] * 15
+    a = [ b'one', b'two', b'three', b'four', b'five' ] * 30 # 150
     assert_roundtrip(a)
 
 if __name__ == '__main__':
