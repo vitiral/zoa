@@ -82,8 +82,9 @@ def write_data(bw: io.BytesIO, data: bytes):
 def write_arr(bw: io.BytesIO, arr: list[Sab]):
   i = 0
   while True:
-    join = SAB_JOIN if len(arr) - i > 63 else 0
-    write_byte(bw, SAB_ARR | join | min(63, len(arr)))
+    remaining = len(arr) - i
+    join = SAB_JOIN if remaining > 63 else 0
+    write_byte(bw, SAB_ARR | join | min(63, remaining))
 
     j = 0
     while True:
