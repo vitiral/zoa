@@ -24,7 +24,8 @@ class Sab(object):
     return cls.new_arr(out)
 
   def to_py(self):
-    if self.data: return bytes(self.data)
+    if self.data is not None: return bytes(self.data)
+    if self.arr is None: raise ValueError(self)
     out = []
     for v in self.arr:
       out.append(v.to_py())
@@ -79,25 +80,25 @@ def write_data(bw: io.BytesIO, data: bytes):
   bw.write(data[i:])
 
 def write_arr(bw: io.BytesIO, arr: list[Sab]):
-  if len(arr) == 0:
-    write_byte(bw, SAB_ARR)
-    return
-
-  join = SAB_JOIN if len(arr) > 63 else 0
-  write_byte(bw, SAB_ARR | join | min(63, len(arr)))
-
-  # write out the first 63 values
   i = 0
-  while i < 64 and i < len(arr):
-    print("i", i)
-    v = arr[i]
-    if v.data  is not None: write_data(bw, v.data)
-    elif v.arr is not None: write_arr(bw, v.arr)
-    else: raise ValueError(v)
-    i += 1
+  while True:
+    join = SAB_JOIN if len(arr) - i > 63 else 0
+    write_byte(bw, SAB_ARR | join | min(63, len(arr)))
 
-  if i == len(arr): return
-  write_arr(bw, arr[64:])
+    j = 0
+    while True:
+      if i == len(arr): return
+      if j >= 63: break
+
+      print(f"i={i}  j={j}")
+      v = arr[i]
+
+      if v.data  is not None: write_data(bw, v.data)
+      elif v.arr is not None: write_arr(bw, v.arr)
+      else: raise ValueError(v)
+
+      j += 1
+      i += 1
 
 def readexact(br: io.BytesIO, to: bytearray, length: int):
   while length:
@@ -106,27 +107,26 @@ def readexact(br: io.BytesIO, to: bytearray, length: int):
     to.extend(got)
 
 def from_sab(br: io.BytesIO, num:int = 1, joinTo:Sab = None):
-  if isinstance(br, bytes): br = io.BytesIo(br)
+  out = None
+  join = 0
 
-  ty = int_from_bytes(br.read(1))
-  if joinTo:          out = joinTo
-  elif SAB_ARR & ty:  out = Sab.new_arr()
-  else:               out = Sab.new_data()
-  length = SAB_LEN_MASK & ty
+  prev_ty = 1
+  while True:
+    meta = int_from_bytes(br.read(1))
+    ty = SAB_ARR & ty
+    if join and ty != prev_ty:
+      raise ValueError("join different types")
+    else:
+      if SAB_ARR & ty:  out = Sab.new_arr()
+      else:             out = Sab.new_data()
+    lenth = SAB_LEN_MASK & meta
 
-  if not (SAB_ARR & ty): # if not arr
-    if out.data is None: raise ValueError("invalid join")
-    readexact(br, out.data, length)
-    if SAB_JOIN & ty:
-      from_sab(br, joinTo=out)
-    return out
+    if ty: # is arr
+      for _ in range(length):
+        out.append(from_sab(br, 1))
+    else:  # is data
+      readexact(br, out.data, length)
 
-  # arr
-  if out.arr is None: raise ValueError("invalid join")
-  for _ in range(length):
-    out.arr.append(from_sab(br))
-
-  if SAB_JOIN & ty:
-    print("??? join")
-    from_sab(br, num=1, joinTo=out)
-  return out
+    join = SAB_JOIN & ty
+    if not join:
+      return out

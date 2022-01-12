@@ -7,6 +7,8 @@ def assert_roundtrip(v):
   sab = Sab.from_(v)
   b = sab.serialize()
   result_sab = from_sab(b)
+  pp(result_sab.arr)
+  print()
   result = result_sab.to_py()
   pp(v)
   pp(result)
