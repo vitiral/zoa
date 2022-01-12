@@ -112,8 +112,8 @@ two data types in SAN/SAB: string and array. Each of them is preceeded by a
 ;/l{
   T can be 0 for "bytes" or 1 for "array";
   L contains a length (0-63) of the bytes or array;
-  J can be 1, which will cause it to be "joined" to the last item allowing it
-    to be longer than 63 bytes/items.
+  J can be 1, which will cause it to be "joined" to the next item. This allows
+    data to be longer than 63 bytes or items.
 }
 
 Both SAB and SAN are extremely simple. SAN is probably simpler than yaml but is
