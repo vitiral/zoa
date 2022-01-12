@@ -1,15 +1,16 @@
-/h1 tamu: Text Array Mark Up;
+/h1 Tamu: Text Array Mark Up;
 
-/> This document is written using tamu;
+/> This document is written using Tamu;
 
-tamu (Text Array Mark Up) is a text array markup using san (Serialized Array
-Notation). Before we go into the syntax of Tamu, let's look at san syntax.;
+Tamu (Text Array Mark Up) is a markup language (like "Markdown") using SAN
+(Serialized Array Notation). Before we go into the syntax of Tamu, let's look at
+SAN syntax.;
 
-san has only two data types, string and array. Strings start at the first
+SAN has only two data types, string and array. Strings start at the first
 non-whitespace character (except for '/' or '{', which we will get to) and
 continue until a semicolon. For example:
 ;/===
-  This is a san string;
+  This is a SAN string;
 ===
 
 Arrays are specified using { ... } and can be nested, like this:
@@ -40,7 +41,7 @@ The following are how to use special characters, which are only special
 at the start of an item (i.e. after ';'):
 ;/===
   {           Start of array. End the array with '}'
-  //          Line comment. It will not apear in the output sab.
+  //          Line comment. It will not apear in the output SAB.
   /*          Block comment /*nesting allowed*/, it must be closed with: */
   /           '/' followed by one or more spaces is leading whitespace
   \/          Escapes a /, allowing it to be used at the beginning of an item.
@@ -55,13 +56,13 @@ at the start of an item (i.e. after ';'):
   /#<number>  Parses the number and writes as big-endian I32. Default base is
               decimal. Prefixes of 0x and 0b will parse hex and binary.
               Prefixing with '-' will make a negative number.
-  /$<name>    Run a san extension. <name> must be a function which will parse
+  /$<name>    Run a SAN extension. <name> must be a function which will parse
               it's own syntax.
   /+          Concatenate (join) this string item to the last string item.
               Example:
                 this is all one ;/+single string item.;
-  /<char>     Other single-character items are implemented by extensions to san,
-              such as tamu (Text Array Mark Up).
+  /<char>     Other single-character items are implemented by extensions to SAN,
+              such as Tamu.
 ===
 
 The following are Tamu extensions:
@@ -84,7 +85,7 @@ The following are Tamu extensions:
   /==         code block. Similar to ' blocks but will be rendered correctly.
 ===
 
-Most standard text in tamu is written using normal text strings, with
+Most standard text in Tamu is written using normal text strings, with
 semicolons breaking up the paragraphs. The document you are reading is an
 example of this. All of the above escapes simply cause a list to be written
 instead of a string. That list contains specific metadata for renders to
@@ -99,10 +100,10 @@ For example, you can make;/*italic* ;/% bold% or ;/_underlined_ text pretty
 easily. You can also ;/@{insert a link; http://civboot.org} or ;[some code].
 All of the above happen inline.;
 
-/h2 sab: Serialized Array Bytecode
+/h2 SAB: Serialized Array Bytecode
 
-san syntax gets compiled into a stream of bytes which are called sab. There are
-two data types in san/sab: string and array. Each of them is preceeded by a
+SAN syntax gets compiled into a stream of bytes which are called SAB. There are
+two data types in SAN/SAB: string and array. Each of them is preceeded by a
 "type byte" which looks like:
 ;/===
   TJLL LLLL : T=type bit  J=join bit  L=length bits (0-63)
@@ -115,9 +116,9 @@ two data types in san/sab: string and array. Each of them is preceeded by a
     to be longer than 63 bytes/items.
 }
 
-Both sab and san are extremely simple. San is probably simpler than yaml but is
+Both SAB and SAN are extremely simple. SAN is probably simpler than yaml but is
 easier to write and has far less ambiguitity. It also has massively increased
-functionality over yaml. sab on the other hand is about the simplest possible
+functionality over yaml. SAB on the other hand is about the simplest possible
 general purpose structured data that can exist. Having only two types allows it
 to be compact, fast and usable for even embedded systems.;
 
