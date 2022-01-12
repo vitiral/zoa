@@ -113,20 +113,23 @@ def from_sab(br: io.BytesIO, joinTo:Sab = None):
   prev_ty = 1
   while True:
     meta = int_from_bytes(br.read(1))
-    ty = SAB_ARR & ty
-    if join and ty != prev_ty:
-      raise ValueError("join different types")
+    ty = SAB_ARR & meta
+    if join:
+      if ty != prev_ty: raise ValueError("join different types")
     else:
       if SAB_ARR & ty:  out = Sab.new_arr()
       else:             out = Sab.new_data()
-    lenth = SAB_LEN_MASK & meta
+    length = SAB_LEN_MASK & meta
 
     if ty: # is arr
+      print("??? length=", length, 'join=', SAB_JOIN & meta)
       for _ in range(length):
-        out.append(from_sab(br))
+        out.arr.append(from_sab(br))
     else:  # is data
       readexact(br, out.data, length)
 
-    join = SAB_JOIN & ty
+    join = SAB_JOIN & meta
     if not join:
       return out
+    prev_ty = ty
+    print("??? join")
