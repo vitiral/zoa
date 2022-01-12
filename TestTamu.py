@@ -1,5 +1,6 @@
 import io
 import unittest
+from pprint import pprint as pp
 from tamu import *
 
 def assert_roundtrip(v):
@@ -7,6 +8,8 @@ def assert_roundtrip(v):
   b = sab.serialize()
   result_sab = from_sab(b)
   result = result_sab.to_py()
+  pp(v)
+  pp(result)
   assert v == result
 
 class TestSan(unittest.TestCase):
@@ -41,6 +44,24 @@ class TestSan(unittest.TestCase):
     assert_roundtrip([ [] ])
     assert_roundtrip([b'hi', [] ])
     assert_roundtrip([b'hi', [b'bob']])
+
+  def test_long_bytes(self):
+    bw = io.BytesIO()
+    b = b'0123456789' * 13 # length = 130 (63 + 63 + 4
+    write_data(bw, b)
+    r = bw.getvalue()
+    print(f"\n{hex(r[0])} == {hex(SAB_DATA | SAB_JOIN | 63)}\n")
+    assert r[0] == SAB_DATA | SAB_JOIN | 63
+    assert r[1:64] == b[0:63]
+    assert r[64] == SAB_DATA | SAB_JOIN | 63
+    assert r[65:128] == b[63:126]
+    assert r[128] == SAB_DATA | 4
+    assert r[129:] == b[126:]
+
+  def test_long_round(self):
+    b = b'0123456789' * 15
+    a = [b, b, [], b'hi', [b'one', b'two', b] ] * 15
+    assert_roundtrip(a)
 
 if __name__ == '__main__':
   unittest.main()

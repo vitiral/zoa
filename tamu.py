@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 SAB_LEN_MASK = 0x3F
 SAB_JOIN = 0x40
+SAB_DATA = 0x00
 SAB_ARR = 0x80
 
 def isbytes(v): return isinstance(v, (bytes, bytearray))
@@ -63,9 +64,9 @@ def int_from_bytes(b: bytes):
 def write_byte(bw: io.BytesIO, v: int):
   return bw.write(v.to_bytes(1, 'big'))
 
-def write_data(bw: io.BytesIO, data: bytes, join=False):
+def write_data(bw: io.BytesIO, data: bytes, join=0):
   assert join == 0 or join == SAB_JOIN
-  if join: assert len(arr) <= 64
+  if join: assert len(arr) <= 63
   if len(data) == 0:
     assert not join
     bw.write(b'\0') # No join bit, arr bit, or length
@@ -73,25 +74,25 @@ def write_data(bw: io.BytesIO, data: bytes, join=False):
 
   # write any join blocks
   i = 0
-  while len(data) - i > 64:
-    write_byte(bw, SAB_JOIN | 64)
-    bw.write(bw, data[i:i+64])
-    i += 64
+  while len(data) - i > 63:
+    write_byte(bw, SAB_JOIN | 63)
+    bw.write(data[i:i+63])
+    i += 63
   write_byte(bw, len(data) - i) # note: not joined
   bw.write(data[i:])
 
-def write_arr(bw: io.BytesIO, arr: list[Sab], join=False):
+def write_arr(bw: io.BytesIO, arr: list[Sab], join=0):
   assert join == 0 or join == SAB_JOIN
-  if join: assert len(arr) <= 64
+  if join: assert len(arr) <= 63
   if len(arr) == 0:
     write_byte(bw, SAB_ARR)
     return
 
-  write_byte(bw, SAB_ARR | join | min(64, len(arr)))
+  write_byte(bw, SAB_ARR | join | min(63, len(arr)))
 
-  # write out the first 64 values
+  # write out the first 63 values
   i = 0
-  while i < 64 and i < len(arr):
+  while i < 63 and i < len(arr):
     v = arr[i]
     if v.data  is not None:  write_data(bw, v.data)
     elif v.arr is not None: write_arr(bw, v.arr)
@@ -99,10 +100,10 @@ def write_arr(bw: io.BytesIO, arr: list[Sab], join=False):
     i += 1
   if i == len(arr): return
 
-  # write out the remaining values in 64 block chunks
+  # write out the remaining values in 63 block chunks
   while len(arr) - i > 0:
-    write_arr(bw, arr[i:i+64], join=True)
-    i += min(64, len(arr) - i)
+    write_arr(bw, arr[i:i+63], join=SAB_JOIN)
+    i += min(63, len(arr) - i)
 
 def readexact(br: io.BytesIO, to: bytearray, length: int):
   while length:
