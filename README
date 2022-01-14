@@ -1,7 +1,7 @@
-|****************
-*|h1 zoa: serialized bytes and array buffer and format strategy|
+{****************
+*}|h1 zoa: serialized structured data and it's textual representation|
 
-|> This document is written using zoat.|
+|> This document is written using zoat (find out more below!).|
 
 Zoa is a set of standards related to serialized structured data and it's textual
 representation and processing. It is part of the [Civboot](http://civboot.org)
@@ -9,7 +9,7 @@ project.|
 
 Zoa encompases the following technologies:
 
-|l{
+|lu{
   zoab: a structured data composed of only arrays and bytes.|
   zoat: an extensible text format for representing zoab in a human readable
     way. Zoat intentionally has little functionality on it's own but allows
@@ -25,8 +25,8 @@ Zoa encompases the following technologies:
 }
 
 
-|**************
-*|h2 zoat
+{**************
+*}|h2 zoat
 
 zoat (like zoab) has only two data types, bytes and array. Bytes start at the
 first non-whitespace character (except for '|' or '{', which we will get to) and
@@ -65,51 +65,76 @@ For instance,
       \ However there are two spaces after the period since
       |[\] was used both before and after the newline.|
 
-The following are how to use special characters, which are only special
-at the start of an item (i.e. after '|'):|
-|===
-  |           (followed by whitespace) start or end of an item. Multiple
-              together are ignored, i.e. | | | is the same as |
+The following are how to use commands. Commands must be specified immediately
+following either a pipe or curly brace:
 
-  | <text>|   A bytes item. There _must_ be whitespace (newline, tab or space)
-              after | otherwise the character will be treated as a command.
+|===
+  |X          Where X is a character or whitespace. Runs a command, some of
+              which are defined below. Note that multiple '|' together are
+              ignored, i.e. '|| | | ||' is the same as '|'.
+
+  {           Starts an array. Characters following are always treated as text
+              (never a command), but whitespace is still ignored. Example:
+                {array item 1| array item 2}
+
+  }           Ends an array. Characters following are always treated as text
+              (never a command), but whitespace is still ignored. Example:
+
+              Note: {{}} will create an empty array inside a array. However,
+              adding '|' does nothing. i.e. '|{| {||} |}|' is exactly the same.
+              This allows for trailing pipes. If you've ever used JSON you know
+              the pain of not being able to use trailing commas, this avoids
+              that pain.
+
+  | <bytes>   A set of bytes until the next '|', '{' or '}'. There _must_ be
+              whitespace (newline, tab or space) after | otherwise the character
+              will be treated as a command. Whitespace will be ignored until the
+              first non-whitespace character.
 
   |\          Starts text immediately using the escape. Example:
                   |\nThis text started on a new line.|
 
-  {           Start of array. End the array with '}'
+  |*          Line comment. Text is ignored until a newline.
 
-  ||          Line comment
-
-  |*          Block comment |*nesting allowed*|, it must be closed with: *|
+  {*          Block comment {*nesting allowed*}, it must be closed with: *}
               After a closing block comment a new command can start immediately.
               Example:
-                  |* comment *|h1 header
+                  {* comment *}|h1 header
 
   |'''        Plain-text/code block. Any number of ' can be used, and must be
-              escaped with the same number of ', which ends the item.  The raw
-              text will ignore escapes (i.e. \n) and preserve newlines, _except_
-              for the first newline if immediately follows the opening ' block
-              or the last newline if it immediately preceeds the ' block.
+              escaped with the same number of ', which ends the item (but will
+              not execute a command. As a general rule only |{} execute
+              commands). The raw text will ignore escapes (i.e. \n) and preserve
+              newlines, _except_ for the first newline if immediately follows
+              the opening ' block or the last newline if it immediately preceeds
+              the ' block. Also, the text will be de-indented by the indent at
+              the start of the command. Example:
+                |'''
+                This is some raw text.
+                It will have no indent.
+                I can use { | } \n etc and they are interpreted literally.
+                I can even end with a space. '''
+                This is a new item, as if the previous had ended with pipe|
 
   |+          Concatenate (join) this item to the last item of the same type.
+              Note that text starts immediately.
               Example:
-                this is all one|+ single string item.|
+                all one |+single item. ==> all one single item.|
+                {1| 2} |+ {3| 4}       ==> {1| 2| 3| 4}
 
-  |<char>     Other single-character items are implemented by extensions, such
-              as ZoaMark
+  |<char>     Other single-character commands are implemented by extensions,
+              such as ZoaMark
 ===
 
 The following are ZoaMark extensions:
 |====
-  |/          (inline) italicized until /  Example: I am |/very/ smart.
+  |/          (inline) italicized until / Example: 'The cheese is |/very/ good.'
 
-  |#          (inline) bold until #  Example: I am |#very# smart.
+  |#          (inline) bold until # Example: 'The cheese is |#very# good.'
 
-  |_          (inline) underlined until _  Example: I am |_very_ smart.
+  |_          (inline) underlined until _ Example: 'The cheese is |_very_ good.'
 
-  |&          (inline) path or universal resource locator (URL).
-              Use like:
+  |&          (inline) path or universal resource locator (URL). Example:
                   Just |&{search| http://google.com} for it
 
   |[          (inline) code until closing ]. Any number of [ can be used:
@@ -126,46 +151,57 @@ The following are ZoaMark extensions:
 
   |hN         header block, use one of h1 h2 h3 h4. Ignores leading spaces.
 
-  |lX         list block. ln is a numbered list, lu is an un-numbered list.
-                |lu{ list item| other list item }
+  |lX         list block where X is a character. ln is a numbered list, lu is an
+              un-numbered list. Example:
+                  |lu{list item| other list item }
 
   |==         code block. Similar to ' blocks but will be rendered correctly.
-              Any number of == can be used.
-
-              |=== this is a code block with == on it's own line ===
+              Any number of == can be used. Example:
+                  |=== this is a code block that has == inside it. ===
 ====
 
 Most standard text in ZoaMark is written using normal text strings, with
-pipes breaking up the paragraphs. The document you are reading is an
-example of this. All of the above escapes simply cause a list to be written
-instead of a string. That list contains specific metadata for renders to
-use.|
+pipes breaking up the paragraphs.
 
-The commands |[[ |* |% |_ |@ and |[...] ]] are treated as "inline" by renderers, so
+The following commands are treated as "inline" by renderers,
+
+The commands |[[ ]] are treated as "inline" by renderers, so
 will not cause a new paragraph (or even surrounding spaces) to be inserted, but
 do insert any spaces following them. The other commands are treated as their own
-"section" or paragraph.|
+"block" or paragraph.|
 
-For example, you can make|*italic* |%bold% or |_underlined_ text pretty
-easily. You can also |@{insert a link| http://civboot.org} or |[some code].
-All of the above happen inline.|
+|==
+  Inline commands:
+  |/      italic
+  |#      bold
+  |_      underlined
+  |&      reference/link
+  |[...]  inline code
+==
 
-|**************
-*|h2 zoab: structured array and byte data.
+For example, you can make|/italic/ |#bold# or |_underlined_ text pretty easily.
+You can also |&{insert a link| http://civboot.org} or |[some code]. All of these
+happen inline.|
 
-zaot (and ZoaMark) syntax gets compiled into a stream of bytes which are called
-zoab. There are two data types in zoab: bytes and array. Each of them is
-preceeded by a "type byte" which looks like:
+{**************
+*}|h2 zoab: structured array and byte data.
+
+The binary representation of zoa is called zoab. It is composed of only two
+types: bytes an arrays. Both can only have sections of length 63, but a join
+bit may be used to make longer values.|
+
+The start of a zoab item has a single byte which specifies it's type, join
+status and length. it looks like:|
 
 |===
   JTLL LLLL : J=join bit   T=type bit   L=length bits (0-63)
 ===
 
-|l{
+|lu{
+  J: can be 1, which will cause it to be "joined" to the next item (which must
+    be the same type). This allows the true length to be longer than 63.|
   T: can be 0 for "bytes" or 1 for "array"|
   L: contains a length (0-63) of the bytes or array|
-  J: can be 1, which will cause it to be "joined" to the next item. This allows
-    data to be longer than 63 bytes or items.
 }
 
 Both zoab and zoat are extremely simple. zoat is probably simpler than yaml but is
@@ -174,45 +210,44 @@ functionality over yaml. zoab on the other hand is about the simplest possible
 general purpose structured data that can exist. Having only two types allows it
 to be compact, fast and usable for even embedded systems.|
 
-
-|**************
-*|h2 Binary Runtime Type Selection
+{**************
+*}|h2 Binary Runtime Type Selection
 
 There is one byte that is invalid for both zoab and utf8 (and ascii):
 |[J=1 T=0 L=0], in binary |[1000 0000] or hex 0x80.|
 
-Instead of making this byte illegal, we will _require_ it in the zoa(...)
+Instead of making this byte illegal, we will _require_ it in the |[zoa(...)]
 function, which is intended to deserialize either zoab or zoat from user
 inputs, data stored in file systems or data transferred over the wire. It will
 still be illegal for pure-zoab related functions, which expect the data to
 already be deserialzed.|
 
-If this byte appears as the first byte, the next byte must be a stream type. The
-supported ones are:|
-|l{
-  0: pure unstructured data with no other meaning|
+If this byte appears as the first byte, the next byte must be a zoab "steam
+type". The supported ones are:|
+|lu{
+  0: pure unstructured data with no special meaning.|
   1: _mostly_ human readable data. i.e. struct fields are names, integers are in
     text format, etc. This is typically what should be passed to for dbg logs,
-    etc.|
+    human readable compressed configs, etc.|
   2: protozoa data, which is similar to protobuf. Fields are represented by
     user-assigned integers, data is in binary format, etc. The deserializer
-    obviously needs access to a backwards-compatible struct to know how to
-    deserialize this data.|
+    obviously needs access to a backwards-compatible reference (i.e. a struct
+    definition) to know how to deserialize this data.|
 }
 
-Also, we will reserve J=1 T=1 L=0 to mean one of:|
-|l{
-  if running in memory: the next 4 bytes are a pointer to more data of whatever
-    type the previous item was. This allows fngi (or other languages) to use a
-    maximum block size of, say, 4k memory blocks while still permitting arbitrary
-    length zoab data.
+We also reserve J=1 T=1 L=0 to mean one of:|
+|lu{
+  If running in memory: the next value must be bytes and it must be a pointer to
+    more data of whatever type the previous item was. This allows fngi (or other
+    languages) to use a maximum block size of, say, 4k memory blocks while still
+    permitting arbitrary length zoab data.|
   otherwise: not sure, probably not allowed. Possibly on the wire it could be
     a signal that more data is in another packet. It may even give that packet's
-    U32 "identifier".
+    U32 "identifier".|
 }
 
-|**************
-*|h2 LICENSING|
+{**************
+*}|h2 LICENSING|
 This work is part of the Civboot project and therefore primarily exists for
 educational purposes. Attribution to the authors and project is appreciated but
 not necessary.|
@@ -224,24 +259,24 @@ If for any reason the UNLICENSE is not valid in your jurisdiction or project,
 this work can be singly or dual licensed at your discression with the MIT
 license below.|
 
-|>{
-  Copyright 2021 Garrett Berg|
+|###
+Copyright 2021 Garrett Berg
 
-  Permission is hereby granted, free of charge, to any person obtaining a copy of
-  this software and associated documentation files (the "Software"), to deal in
-  the Software without restriction, including without limitation the rights to
-  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-  of the Software, and to permit persons to whom the Software is furnished to do
-  so, subject to the following conditions:|
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
 
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.|
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  SOFTWARE.|
-}
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+###
