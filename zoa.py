@@ -3,24 +3,24 @@ import unittest
 
 from dataclasses import dataclass
 
-SAB_LEN_MASK = 0x3F
-SAB_JOIN = 0x40
-SAB_DATA = 0x00
-SAB_ARR = 0x80
+ZOA_LEN_MASK = 0x3F
+ZOA_JOIN = 0x40
+ZOA_DATA = 0x00
+ZOA_ARR = 0x80
 
 def isbytes(v): return isinstance(v, (bytes, bytearray))
 
 @dataclass
-class Sab(object):
+class Zoa(object):
   data: bytearray
-  arr: list["Sab"]
+  arr: list["Zoa"]
 
   @classmethod
   def from_(cls, value):
     if isbytes(value): return cls.new_data(value)
     out = []
     for v in value:
-      out.append(Sab.from_(v))
+      out.append(Zoa.from_(v))
     return cls.new_arr(out)
 
   def to_py(self):
@@ -73,18 +73,18 @@ def write_data(bw: io.BytesIO, data: bytes):
   # write any join blocks
   i = 0
   while len(data) - i > 63:
-    write_byte(bw, SAB_JOIN | 63)
+    write_byte(bw, ZOA_JOIN | 63)
     bw.write(data[i:i+63])
     i += 63
   write_byte(bw, len(data) - i) # note: not joined
   bw.write(data[i:])
 
-def write_arr(bw: io.BytesIO, arr: list[Sab]):
+def write_arr(bw: io.BytesIO, arr: list[Zoa]):
   i = 0
   while True:
     remaining = len(arr) - i
-    join = SAB_JOIN if remaining > 63 else 0
-    write_byte(bw, SAB_ARR | join | min(63, remaining))
+    join = ZOA_JOIN if remaining > 63 else 0
+    write_byte(bw, ZOA_ARR | join | min(63, remaining))
 
     j = 0
     while True:
@@ -107,29 +107,29 @@ def readexact(br: io.BytesIO, to: bytearray, length: int):
     length -= len(got)
     to.extend(got)
 
-def from_sab(br: io.BytesIO, joinTo:Sab = None):
+def from_zoa(br: io.BytesIO, joinTo:Zoa = None):
   out = None
   join = 0
 
   prev_ty = 1
   while True:
     meta = int_from_bytes(br.read(1))
-    ty = SAB_ARR & meta
+    ty = ZOA_ARR & meta
     if join:
       if ty != prev_ty: raise ValueError("join different types")
     else:
-      if SAB_ARR & ty:  out = Sab.new_arr()
-      else:             out = Sab.new_data()
-    length = SAB_LEN_MASK & meta
+      if ZOA_ARR & ty:  out = Zoa.new_arr()
+      else:             out = Zoa.new_data()
+    length = ZOA_LEN_MASK & meta
 
     if ty: # is arr
-      print("??? length=", length, 'join=', SAB_JOIN & meta)
+      print("??? length=", length, 'join=', ZOA_JOIN & meta)
       for _ in range(length):
-        out.arr.append(from_sab(br))
+        out.arr.append(from_zoa(br))
     else:  # is data
       readexact(br, out.data, length)
 
-    join = SAB_JOIN & meta
+    join = ZOA_JOIN & meta
     if not join:
       return out
     prev_ty = ty
