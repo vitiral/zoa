@@ -6,7 +6,7 @@ from zoa import *
 def assert_roundtrip(v):
   zoa = Zoa.from_(v)
   b = zoa.serialize()
-  result_zoa = from_zoa(b)
+  result_zoa = from_zoab(b)
   pp(result_zoa.arr)
   print()
   result = result_zoa.to_py()
@@ -38,7 +38,7 @@ class TestZoa(unittest.TestCase):
     assert b[2:] == b'hi'
 
   def test_from_arr_str(self):
-    v = from_zoa(io.BytesIO(b'\x02hi'))
+    v = from_zoab(io.BytesIO(b'\x02hi'))
     assert v == Zoa.new_data(b'hi')
 
   def test_from_to(self):

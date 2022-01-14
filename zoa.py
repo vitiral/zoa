@@ -4,9 +4,9 @@ import unittest
 from dataclasses import dataclass
 
 ZOA_LEN_MASK = 0x3F
-ZOA_JOIN = 0x40
+ZOA_JOIN = 0x80
+ZOA_ARR = 0x40
 ZOA_DATA = 0x00
-ZOA_ARR = 0x80
 
 def isbytes(v): return isinstance(v, (bytes, bytearray))
 
@@ -107,7 +107,7 @@ def readexact(br: io.BytesIO, to: bytearray, length: int):
     length -= len(got)
     to.extend(got)
 
-def from_zoa(br: io.BytesIO, joinTo:Zoa = None):
+def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
   out = None
   join = 0
 
@@ -125,7 +125,7 @@ def from_zoa(br: io.BytesIO, joinTo:Zoa = None):
     if ty: # is arr
       print("??? length=", length, 'join=', ZOA_JOIN & meta)
       for _ in range(length):
-        out.arr.append(from_zoa(br))
+        out.arr.append(from_zoab(br))
     else:  # is data
       readexact(br, out.data, length)
 

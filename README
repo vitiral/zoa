@@ -1,16 +1,36 @@
-/h1 Tamu: Text Array Mark Up;
+/h1 zoa: serialized bytes and array buffer and format strategy
 
-/> This document is written using Tamu;
+/> This document is written using zoat.
 
-Tamu (Text Array Mark Up) is a markup language (like "Markdown") using SAN
-(Serialized Array Notation). Before we go into the syntax of Tamu, let's look at
-SAN syntax.;
+Zoa is a set of standards related to serialized structured data and it's textual
+representation and processing. It is part of the [Civboot](http://civboot.org)
+project.;
 
-SAN has only two data types, string and array. Strings start at the first
-non-whitespace character (except for '/' or '{', which we will get to) and
+Zoa encompases the following technologies:
+
+;/l{
+  zoab: a structured data composed of only arrays and bytes.;
+  zoat: an extensible text format for representing zoab in a human readable
+    way. Zoat intentionally has little functionality on it's own but allows
+    extensibility and a standardized syntax for the different tools built on top
+    of it.;
+  ZoaMark: a markup language built on zoat, similar in some ways to "Markdown".;
+  zoac: a configuration lanugage built on zoat and fngi, allowing execution of
+    arbitrary fngi functions with specific requirements.;
+  zoash: a text-based shell built on zoac allowing creating of processes,
+    mutation of files or anything else a computer user might want to do.
+    zoac functions are still callable to process data, but other functions are
+    available as well perform side effects.;
+}
+
+
+;/h1 zoat
+
+zoat (like zoab) has only two data types, bytes and array. Bytes start at the
+first non-whitespace character (except for '/' or '{', which we will get to) and
 continue until a semicolon. For example:
 ;/===
-  This is a SAN string;
+  This is a zoat string. It ends with a semicolon;
 ===
 
 Arrays are specified using { ... } and can be nested, like this:
@@ -29,9 +49,11 @@ escapes. Here are the valid escapes in text:
 ;/===
   \n          newline
   \t          tab
-  \;          ';' character. Note: Semicolon normally ends the item.
-  \           a literal space character (used as an alternative to '/ ').
-  \/          a literal '/' character (see why below).
+  \;          a literal ';' character
+  \/          a literal '/' character
+  \{          a literal '{' character
+  \}          a literal '}' character
+  \           a literal space character
   \xDD        hex byte of value 0xDD
   \<newline>  line continuation. When \ is used at the end of a line no
               space will be insert when going to the next line.
@@ -43,29 +65,22 @@ at the start of an item (i.e. after ';'):
   {           Start of array. End the array with '}'
   //          Line comment. It will not apear in the output SAB.
   /*          Block comment /*nesting allowed*/, it must be closed with: */
-  /           '/' followed by one or more spaces is leading whitespace
-  \/          Escapes a /, allowing it to be used at the beginning of an item.
-              Note this isn't actually special syntax, as '\' is considered a
-              normal character and '\/' will always translate to just '/'
   /'''        Is a plain-text/code block. Any number of ' can be used, and
               must be escaped with the same number of ', which ends the item.
               The raw text will ignore escapes (i.e. \n) and preserve newlines,
               _except_ for the first newline if immediately follows the opening
               ' block or the last newline if it immediately preceeds the '
               block.
-  /#<number>  Parses the number and writes as big-endian I32. Default base is
-              decimal. Prefixes of 0x and 0b will parse hex and binary.
-              Prefixing with '-' will make a negative number.
   /$<name>    Run a SAN extension. <name> must be a function which will parse
               it's own syntax.
   /+          Concatenate (join) this string item to the last string item.
               Example:
                 this is all one ;/+single string item.;
-  /<char>     Other single-character items are implemented by extensions to SAN,
-              such as Tamu.
+  /<char>     Other single-character items are implemented by extensions, such
+              as ZoaMark
 ===
 
-The following are Tamu extensions:
+The following are ZoaMark extensions:
 ;/===
   /*          italicized until *
   /%          bold until %
@@ -85,7 +100,7 @@ The following are Tamu extensions:
   /==         code block. Similar to ' blocks but will be rendered correctly.
 ===
 
-Most standard text in Tamu is written using normal text strings, with
+Most standard text in ZoaMark is written using normal text strings, with
 semicolons breaking up the paragraphs. The document you are reading is an
 example of this. All of the above escapes simply cause a list to be written
 instead of a string. That list contains specific metadata for renders to
@@ -100,31 +115,62 @@ For example, you can make;/*italic* ;/% bold% or ;/_underlined_ text pretty
 easily. You can also ;/@{insert a link; http://civboot.org} or ;[some code].
 All of the above happen inline.;
 
-/h2 SAB: Serialized Array Bytecode
+/h2 zoab: structured array and byte data.
 
-SAN syntax gets compiled into a stream of bytes which are called SAB. There are
-two data types in SAN/SAB: string and array. Each of them is preceeded by a
-"type byte" which looks like:
+zaot (and ZoaMark) syntax gets compiled into a stream of bytes which are called
+zoab. There are two data types in zoab: bytes and array. Each of them is
+preceeded by a "type byte" which looks like:
+
 ;/===
-  TJLL LLLL : T=type bit  J=join bit  L=length bits (0-63)
+  JTLL LLLL : J=join bit   T=type bit   L=length bits (0-63)
 ===
 
 ;/l{
-  T can be 0 for "bytes" or 1 for "array";
-  L contains a length (0-63) of the bytes or array;
-  J can be 1, which will cause it to be "joined" to the next item. This allows
+  T: can be 0 for "bytes" or 1 for "array";
+  L: contains a length (0-63) of the bytes or array;
+  J: can be 1, which will cause it to be "joined" to the next item. This allows
     data to be longer than 63 bytes or items.
 }
 
-Both SAB and SAN are extremely simple. SAN is probably simpler than yaml but is
+Both zoab and zoat are extremely simple. zoat is probably simpler than yaml but is
 easier to write and has far less ambiguitity. It also has massively increased
-functionality over yaml. SAB on the other hand is about the simplest possible
+functionality over yaml. zoab on the other hand is about the simplest possible
 general purpose structured data that can exist. Having only two types allows it
 to be compact, fast and usable for even embedded systems.;
 
 
+;/h1 Runtime Type Selection
 
-/h1 LICENSING;
+There is one byte that is invalid for both zoab and utf8 (and ascii):
+;/[J=1 T=0 L=0], in binary ;/[1000 0000] or hex 0x80.
+
+Instead of making this byte illegal, we will _require_ it in the zoa(...)
+function, which is intended to deserialize either zoab or zoat from user
+inputs, data stored in file systems or data transferred over the wire. It will
+still be illegal for pure-zoab related functions, which expect the data to
+already be deserialzed.
+
+If this byte appears as the first byte, the next byte must be a stream type. The
+supported ones are:
+- 0: pure unstructured data with no other meaning
+- 1: _mostly_ human readable data. i.e. struct fields are names, integers are in
+    text format, etc. This is typically what should be passed to for dbg logs,
+    etc.
+- 2: protozoa data, which is similar to protobuf. Fields are represented by
+    user-assigned integers, data is in binary format, etc. The deserializer
+    obviously needs access to a backwards-compatible struct to know how to
+    deserialize this data.
+
+Also, we will reserve J=1 T=1 L=0 to mean one of:
+- if running in memory: the next 4 bytes are a pointer to more data of whatever
+  type the previous item was. This allows fngi (or other languages) to use a
+  maximum block size of, say, 4k memory blocks while still permitting arbitrary
+  length zoab data.
+- otherwise: not sure, probably not allowed. Possibly on the wire it could be
+  a signal that more data is in another packet. It may even give that packet's
+  U32 "identifier".
+
+;/h1 LICENSING;
 This work is part of the Civboot project and therefore primarily exists for
 educational purposes. Attribution to the authors and project is appreciated but
 not necessary.

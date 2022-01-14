@@ -1,0 +1,18 @@
+https://lemire.me/blog/2018/05/09/how-quickly-can-you-check-that-a-string-is-valid-unicode-utf-8/
+
+UTF8 high bits can start with:
+- anything if number <= 0x7F (ascii)
+- 0xC: 0b1100 XXXX
+- 0xD: 0b1100 XXXX
+- 0xE: 0b1110 XXXX
+- 0xF: 0b1111 XXXX
+
+Meanwhile zoab starts with: JTLL LLLL
+
+> originally this was TJ... but they were swapped, the reasons are below!
+
+There are only two invalid zoab bytes: J=0 T=0|1 and L=0
+
+Therefore we can craft an invalid byte for _both_ zoab and utf8: J=1 T=0 L=0,
+or 0b1000 0000, i.e. 0x80.
+
