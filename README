@@ -28,7 +28,7 @@ Zoa encompases the following technologies:
 {**************
 *}|h2 zoat
 
-zoat (like zoab) has only two data types, bytes and array. Bytes start at the
+zoat (like zoab) has only two data types: bytes and arrays. Bytes start at the
 first non-whitespace character (except for '|' or '{', which we will get to) and
 continue until a pipe. For example:
 |===
@@ -52,7 +52,7 @@ c-like escapes. Here are the valid escapes in text:
   \n          newline
   \t          tab
   \|          a literal '|' character
-  \{          a literal '{' character (used at beginning of text)
+  \{          a literal '{' character
   \}          a literal '}' character
   \           a literal space character (used at beginning of text)
   \xHH        hex byte of value 0xHH
@@ -63,13 +63,13 @@ c-like escapes. Here are the valid escapes in text:
 For instance,
       there is only one space after the comma above. \
       \ However there are two spaces after the period since
-      |[\] was used both before and after the newline.|
+      an escape was used both before and after the newline.|
 
 The following are how to use commands. Commands must be specified immediately
 following either a pipe or curly brace:
 
 |===
-  |X          Where X is a character or whitespace. Runs a command, some of
+  |X          Where X is a non-whitespace character. Runs a command, some of
               which are defined below. Note that multiple '|' together are
               ignored, i.e. '|| | | ||' is the same as '|'.
 
@@ -78,7 +78,7 @@ following either a pipe or curly brace:
                 {array item 1| array item 2}
 
   }           Ends an array. Characters following are always treated as text
-              (never a command), but whitespace is still ignored. Example:
+              (never a command), but whitespace is still ignored. Example above.
 
               Note: {{}} will create an empty array inside a array. However,
               adding '|' does nothing. i.e. '|{| {||} |}|' is exactly the same.
@@ -103,9 +103,9 @@ following either a pipe or curly brace:
 
   |'''        Plain-text/code block. Any number of ' can be used, and must be
               escaped with the same number of ', which ends the item (but will
-              not execute a command. As a general rule only |{} execute
+              not execute a command. As a general rule only '|' executes
               commands). The raw text will ignore escapes (i.e. \n) and preserve
-              newlines, _except_ for the first newline if immediately follows
+              newlines, _except_ for the first newline if it immediately follows
               the opening ' block or the last newline if it immediately preceeds
               the ' block. Also, the text will be de-indented by the indent at
               the start of the command. Example:
@@ -124,17 +124,17 @@ following either a pipe or curly brace:
 
   |.          Begins the variable compiler, similar to fngi's. When assigning
               variables, values are not added until referenced. Examples:
-                |.foo=fngi|
-                I think |.foo| is great ==> I think | fngi| is great
+                |.foo = fngi |              |* set foo equal to "fngi "
+                { I think |.foo|is great } |* { I think |fngi |is great }
               Arrays can be accessed by index using @<index>
-                |.myArray @0 @3|  |* in c: myArray[0][3]
+                |.myArray @0 @3|            |* C equivalent: myArray[0][3]
               If the data is an array of two-length arrays with strings as the
               first item, you can access by key with '.'. Whitespace or special
               characters in the keys are not supported.
                 |.myDict.foo.bar|
 
-  |.+         Begins the variable compiler, joining to the last item. Example:
-                I think |.+foo|+ is great ==> I think fngi is great
+  |.+         Joins the variable to the last item. Example:
+                { I think |.+foo|+is great } |* { I think fngi is great }
 
   |<char>     Other single-character commands are implemented by extensions,
               such as ZoaMark
@@ -176,23 +176,16 @@ The following are ZoaMark extensions:
                   |=== this is a code block that has == inside it. ===
 ====
 
-Most standard text in ZoaMark is written using normal text strings, with
-pipes breaking up the paragraphs.
-
-The following commands are treated as "inline" by renderers,
-
-The commands |[[ ]] are treated as "inline" by renderers, so
-will not cause a new paragraph (or even surrounding spaces) to be inserted, but
-do insert any spaces following them. The other commands are treated as their own
-"block" or paragraph.|
-
+Most text in ZoaMark is written using normal text strings, with pipes breaking
+up the paragraphs. However, the following commands are treated as "inline" by
+renderers:|
 |==
-  Inline commands:
-  |/      italic
-  |#      bold
-  |_      underlined
-  |&      reference/link
-  |[...]  inline code
+Inline commands:
+  |/.../      italic
+  |#...#      bold
+  |_..._      underlined
+  |&<link>    reference/link
+  |[...]      inline code
 ==
 
 For example, you can make|/italic/ |#bold# or |_underlined_ text pretty easily.
@@ -222,45 +215,42 @@ status and length. it looks like:|
 
 Both zoab and zoat are extremely simple. zoat is probably simpler than yaml but is
 easier to write and has far less ambiguitity. It also has massively increased
-functionality over yaml. zoab on the other hand is about the simplest possible
-general purpose structured data that can exist. Having only two types allows it
-to be compact, fast and usable for even embedded systems.|
+functionality over yaml with features like variable storage and concatenation.
+zoab on the other hand is about the simplest possible general purpose structured
+data that can exist. Having only two types allows it to be compact, fast and
+usable for even embedded systems.|
 
 {**************
 *}|h2 Binary Runtime Type Selection
 
 There is one byte that is invalid for both zoab and utf8 (and ascii):
-|[J=1 T=0 L=0], in binary |[1000 0000] or hex 0x80.|
+|[J=1 T=0 L=0], which in binary is |[1000 0000] or in hex is 0x80.|
 
 Instead of making this byte illegal, we will _require_ it in the |[zoa(...)]
 function, which is intended to deserialize either zoab or zoat from user
-inputs, data stored in file systems or data transferred over the wire. It will
-still be illegal for pure-zoab related functions, which expect the data to
-already be deserialzed.|
+inputs, data stored in file systems or data transferred over the wire. If 0x80
+is the first character then it is assumed this is zoab data. If 0x80
+is |/not/ the first byte then it should be assumed that the file/etc is
+human written zoat.|
 
-If this byte appears as the first byte, the next byte must be a zoab "steam
-type". The supported ones are:|
+|> 0x80 will still be illegal for pure-zoab related functions, which expect the
+data to already be deserialzed.|
+
+0x80 will signal that the nex byte "steam type". The supported ones are:|
 |lu{
   0: pure unstructured data with no special meaning.|
   1: _mostly_ human readable data. i.e. struct fields are names, integers are in
-    text format, etc. This is typically what should be passed to for dbg logs,
-    human readable compressed configs, etc.|
+    text format, etc. This is typically what should be passed to dbg logs, human
+    readable compressed configs, etc.|
   2: protozoa data, which is similar to protobuf. Fields are represented by
     user-assigned integers, data is in binary format, etc. The deserializer
     obviously needs access to a backwards-compatible reference (i.e. a struct
     definition) to know how to deserialize this data.|
 }
 
-We also reserve J=1 T=1 L=0 to mean one of:|
-|lu{
-  If running in memory: the next value must be bytes and it must be a pointer to
-    more data of whatever type the previous item was. This allows fngi (or other
-    languages) to use a maximum block size of, say, 4k memory blocks while still
-    permitting arbitrary length zoab data.|
-  otherwise: not sure, probably not allowed. Possibly on the wire it could be
-    a signal that more data is in another packet. It may even give that packet's
-    U32 "identifier".|
-}
+We also reserve J=1 T=1 L=0 to mean that the next bytes value is actually a
+pointer to more data. This allows fngi (or other languages) to use a maximum
+block size of 4kB while still permitting arbitrary length zoab data.|
 
 {**************
 *}|h2 LICENSING|
