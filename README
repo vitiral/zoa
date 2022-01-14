@@ -1,133 +1,169 @@
-/h1 zoa: serialized bytes and array buffer and format strategy
+|****************
+*|h1 zoa: serialized bytes and array buffer and format strategy|
 
-/> This document is written using zoat.
+|> This document is written using zoat.|
 
 Zoa is a set of standards related to serialized structured data and it's textual
 representation and processing. It is part of the [Civboot](http://civboot.org)
-project.;
+project.|
 
 Zoa encompases the following technologies:
 
-;/l{
-  zoab: a structured data composed of only arrays and bytes.;
+|l{
+  zoab: a structured data composed of only arrays and bytes.|
   zoat: an extensible text format for representing zoab in a human readable
     way. Zoat intentionally has little functionality on it's own but allows
     extensibility and a standardized syntax for the different tools built on top
-    of it.;
-  ZoaMark: a markup language built on zoat, similar in some ways to "Markdown".;
+    of it.|
+  ZoaMark: a markup language built on zoat, similar in some ways to "Markdown".|
   zoac: a configuration lanugage built on zoat and fngi, allowing execution of
-    arbitrary fngi functions with specific requirements.;
+    arbitrary fngi functions with specific requirements.|
   zoash: a text-based shell built on zoac allowing creating of processes,
     mutation of files or anything else a computer user might want to do.
     zoac functions are still callable to process data, but other functions are
-    available as well perform side effects.;
+    available as well perform side effects.|
 }
 
 
-;/h1 zoat
+|**************
+*|h2 zoat
 
 zoat (like zoab) has only two data types, bytes and array. Bytes start at the
-first non-whitespace character (except for '/' or '{', which we will get to) and
-continue until a semicolon. For example:
-;/===
-  This is a zoat string. It ends with a semicolon;
+first non-whitespace character (except for '|' or '{', which we will get to) and
+continue until a pipe. For example:
+|===
+  This is a zoat string. It ends with a pipe|
 ===
 
-Arrays are specified using { ... } and can be nested, like this:
-;/===
-  { first string in array;
-    second string in array;
-    { nested array element 1;
-      nested array element 2;
+Arrays are specified using curly braces and can be nested, like this:
+|===
+  { first string in array|
+    second string in array|
+    { nested array element 1|
+      nested array element 2|
     }
   }
 ===
 
-Whitespace is ignored until it hits the first text or special character,
-after which newlines are treated as spaces and special characters use c-like
-escapes. Here are the valid escapes in text:
-;/===
+Whitespace is always ignored until it hits the first text or special
+character, after which newlines are treated as spaces and special characters use
+c-like escapes. Here are the valid escapes in text:
+|===
   \n          newline
   \t          tab
-  \;          a literal ';' character
-  \/          a literal '/' character
-  \{          a literal '{' character
+  \|          a literal '|' character
+  \{          a literal '{' character (used at beginning of text)
   \}          a literal '}' character
-  \           a literal space character
-  \xDD        hex byte of value 0xDD
+  \           a literal space character (used at beginning of text)
+  \xHH        hex byte of value 0xHH
   \<newline>  line continuation. When \ is used at the end of a line no
               space will be insert when going to the next line.
 ===
 
+For instance,
+      there is only one space after the comma above. \
+      \ However there are two spaces after the period since
+      |[\] was used both before and after the newline.|
+
 The following are how to use special characters, which are only special
-at the start of an item (i.e. after ';'):
-;/===
+at the start of an item (i.e. after '|'):|
+|===
+  |           (followed by whitespace) start or end of an item. Multiple
+              together are ignored, i.e. | | | is the same as |
+
+  | <text>|   A bytes item. There _must_ be whitespace (newline, tab or space)
+              after | otherwise the character will be treated as a command.
+
+  |\          Starts text immediately using the escape. Example:
+                  |\nThis text started on a new line.|
+
   {           Start of array. End the array with '}'
-  //          Line comment. It will not apear in the output SAB.
-  /*          Block comment /*nesting allowed*/, it must be closed with: */
-  /'''        Is a plain-text/code block. Any number of ' can be used, and
-              must be escaped with the same number of ', which ends the item.
-              The raw text will ignore escapes (i.e. \n) and preserve newlines,
-              _except_ for the first newline if immediately follows the opening
-              ' block or the last newline if it immediately preceeds the '
-              block.
-  /$<name>    Run a SAN extension. <name> must be a function which will parse
-              it's own syntax.
-  /+          Concatenate (join) this string item to the last string item.
+
+  ||          Line comment
+
+  |*          Block comment |*nesting allowed*|, it must be closed with: *|
+              After a closing block comment a new command can start immediately.
               Example:
-                this is all one ;/+single string item.;
-  /<char>     Other single-character items are implemented by extensions, such
+                  |* comment *|h1 header
+
+  |'''        Plain-text/code block. Any number of ' can be used, and must be
+              escaped with the same number of ', which ends the item.  The raw
+              text will ignore escapes (i.e. \n) and preserve newlines, _except_
+              for the first newline if immediately follows the opening ' block
+              or the last newline if it immediately preceeds the ' block.
+
+  |+          Concatenate (join) this item to the last item of the same type.
+              Example:
+                this is all one|+ single string item.|
+
+  |<char>     Other single-character items are implemented by extensions, such
               as ZoaMark
 ===
 
 The following are ZoaMark extensions:
-;/===
-  /*          italicized until *
-  /%          bold until %
-  /_          underlined until %
-  /@          path or universal resource locator (URL). Use like:
-                /@{text to display; ./path/to/link}
-  /[          inline code until closing ]. Any number of [ can be used:
-                /[[this is [ all inline code]]
-  />          a "note" block. Use like:
-                />  This is a note
-                    with multiple lines.;
-  /hN         header, use one of {h1 h2 h3 h4}. Ignores leading spaces.
-  /l          un-numbered list. Use like:
-                /l{ list item; list item; }
-  /n          numbered list. Use like:
-                /n{ /*1*/ list item; /*2*/ list item; }
-  /==         code block. Similar to ' blocks but will be rendered correctly.
-===
+|====
+  |/          (inline) italicized until /  Example: I am |/very/ smart.
+
+  |#          (inline) bold until #  Example: I am |#very# smart.
+
+  |_          (inline) underlined until _  Example: I am |_very_ smart.
+
+  |&          (inline) path or universal resource locator (URL).
+              Use like:
+                  Just |&{search| http://google.com} for it
+
+  |[          (inline) code until closing ]. Any number of [ can be used:
+                  Some code: |[[this is [ all ] inline code]] wasn't that nice?
+
+  |>          a "note" block. Use like:
+                |>  This is a note
+                    with no newlines.|
+                or
+                |>{
+                  This is a note,|
+                  With one newline.|
+                }
+
+  |hN         header block, use one of h1 h2 h3 h4. Ignores leading spaces.
+
+  |lX         list block. ln is a numbered list, lu is an un-numbered list.
+                |lu{ list item| other list item }
+
+  |==         code block. Similar to ' blocks but will be rendered correctly.
+              Any number of == can be used.
+
+              |=== this is a code block with == on it's own line ===
+====
 
 Most standard text in ZoaMark is written using normal text strings, with
-semicolons breaking up the paragraphs. The document you are reading is an
+pipes breaking up the paragraphs. The document you are reading is an
 example of this. All of the above escapes simply cause a list to be written
 instead of a string. That list contains specific metadata for renders to
-use.;
+use.|
 
-The commands /* /% /_ /@ and /[...] are treated as "inline" by renderers, so
+The commands |[[ |* |% |_ |@ and |[...] ]] are treated as "inline" by renderers, so
 will not cause a new paragraph (or even surrounding spaces) to be inserted, but
 do insert any spaces following them. The other commands are treated as their own
-"section" or paragraph.;
+"section" or paragraph.|
 
-For example, you can make;/*italic* ;/% bold% or ;/_underlined_ text pretty
-easily. You can also ;/@{insert a link; http://civboot.org} or ;[some code].
-All of the above happen inline.;
+For example, you can make|*italic* |%bold% or |_underlined_ text pretty
+easily. You can also |@{insert a link| http://civboot.org} or |[some code].
+All of the above happen inline.|
 
-/h2 zoab: structured array and byte data.
+|**************
+*|h2 zoab: structured array and byte data.
 
 zaot (and ZoaMark) syntax gets compiled into a stream of bytes which are called
 zoab. There are two data types in zoab: bytes and array. Each of them is
 preceeded by a "type byte" which looks like:
 
-;/===
+|===
   JTLL LLLL : J=join bit   T=type bit   L=length bits (0-63)
 ===
 
-;/l{
-  T: can be 0 for "bytes" or 1 for "array";
-  L: contains a length (0-63) of the bytes or array;
+|l{
+  T: can be 0 for "bytes" or 1 for "array"|
+  L: contains a length (0-63) of the bytes or array|
   J: can be 1, which will cause it to be "joined" to the next item. This allows
     data to be longer than 63 bytes or items.
 }
@@ -136,70 +172,76 @@ Both zoab and zoat are extremely simple. zoat is probably simpler than yaml but 
 easier to write and has far less ambiguitity. It also has massively increased
 functionality over yaml. zoab on the other hand is about the simplest possible
 general purpose structured data that can exist. Having only two types allows it
-to be compact, fast and usable for even embedded systems.;
+to be compact, fast and usable for even embedded systems.|
 
 
-;/h1 Runtime Type Selection
+|**************
+*|h2 Binary Runtime Type Selection
 
 There is one byte that is invalid for both zoab and utf8 (and ascii):
-;/[J=1 T=0 L=0], in binary ;/[1000 0000] or hex 0x80.
+|[J=1 T=0 L=0], in binary |[1000 0000] or hex 0x80.|
 
 Instead of making this byte illegal, we will _require_ it in the zoa(...)
 function, which is intended to deserialize either zoab or zoat from user
 inputs, data stored in file systems or data transferred over the wire. It will
 still be illegal for pure-zoab related functions, which expect the data to
-already be deserialzed.
+already be deserialzed.|
 
 If this byte appears as the first byte, the next byte must be a stream type. The
-supported ones are:
-- 0: pure unstructured data with no other meaning
-- 1: _mostly_ human readable data. i.e. struct fields are names, integers are in
+supported ones are:|
+|l{
+  0: pure unstructured data with no other meaning|
+  1: _mostly_ human readable data. i.e. struct fields are names, integers are in
     text format, etc. This is typically what should be passed to for dbg logs,
-    etc.
-- 2: protozoa data, which is similar to protobuf. Fields are represented by
+    etc.|
+  2: protozoa data, which is similar to protobuf. Fields are represented by
     user-assigned integers, data is in binary format, etc. The deserializer
     obviously needs access to a backwards-compatible struct to know how to
-    deserialize this data.
+    deserialize this data.|
+}
 
-Also, we will reserve J=1 T=1 L=0 to mean one of:
-- if running in memory: the next 4 bytes are a pointer to more data of whatever
-  type the previous item was. This allows fngi (or other languages) to use a
-  maximum block size of, say, 4k memory blocks while still permitting arbitrary
-  length zoab data.
-- otherwise: not sure, probably not allowed. Possibly on the wire it could be
-  a signal that more data is in another packet. It may even give that packet's
-  U32 "identifier".
+Also, we will reserve J=1 T=1 L=0 to mean one of:|
+|l{
+  if running in memory: the next 4 bytes are a pointer to more data of whatever
+    type the previous item was. This allows fngi (or other languages) to use a
+    maximum block size of, say, 4k memory blocks while still permitting arbitrary
+    length zoab data.
+  otherwise: not sure, probably not allowed. Possibly on the wire it could be
+    a signal that more data is in another packet. It may even give that packet's
+    U32 "identifier".
+}
 
-;/h1 LICENSING;
+|**************
+*|h2 LICENSING|
 This work is part of the Civboot project and therefore primarily exists for
 educational purposes. Attribution to the authors and project is appreciated but
-not necessary.
+not necessary.|
 
 Therefore this body of work is licensed using the UNLICENSE, unless otherwise
-specified at the beginning of the source file.
+specified at the beginning of the source file.|
 
 If for any reason the UNLICENSE is not valid in your jurisdiction or project,
 this work can be singly or dual licensed at your discression with the MIT
-license below.
+license below.|
 
-;/###
-Copyright 2021 Garrett Berg
+|>{
+  Copyright 2021 Garrett Berg|
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
+  Permission is hereby granted, free of charge, to any person obtaining a copy of
+  this software and associated documentation files (the "Software"), to deal in
+  the Software without restriction, including without limitation the rights to
+  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+  of the Software, and to permit persons to whom the Software is furnished to do
+  so, subject to the following conditions:|
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.|
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-###
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.|
+}
