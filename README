@@ -10,15 +10,15 @@ project.|
 Zoa encompases the following technologies:
 
 |lu{
-  zoab: a structured data composed of only arrays and bytes.|
-  zoat: an extensible text format for representing zoab in a human readable
+  |#zoab#: a structured data composed of only arrays and bytes.|
+  |#zoat#: an extensible text format for representing zoab in a human readable
     way. Zoat intentionally has little functionality on it's own but allows
     extensibility and a standardized syntax for the different tools built on top
     of it.|
-  ZoaMark: a markup language built on zoat, similar in some ways to "Markdown".|
-  zoac: a configuration lanugage built on zoat and fngi, allowing execution of
+  |#ZoaMark#: a markup language built on zoat, similar in some ways to "Markdown".|
+  |#zoac#: a configuration lanugage built on zoat and fngi, allowing execution of
     arbitrary fngi functions with specific requirements.|
-  zoash: a text-based shell built on zoac allowing creating of processes,
+  |#zoash#: a text-based shell built on zoac allowing creating of processes,
     mutation of files or anything else a computer user might want to do.
     zoac functions are still callable to process data, but other functions are
     available as well perform side effects.|
@@ -122,6 +122,20 @@ following either a pipe or curly brace:
                 all one |+single item. ==> all one single item.|
                 {1| 2} |+ {3| 4}       ==> {1| 2| 3| 4}
 
+  |.          Begins the variable compiler, similar to fngi's. When assigning
+              variables, values are not added until referenced. Examples:
+                |.foo=fngi|
+                I think |.foo| is great ==> I think | fngi| is great
+              Arrays can be accessed by index using @<index>
+                |.myArray @0 @3|  |* in c: myArray[0][3]
+              If the data is an array of two-length arrays with strings as the
+              first item, you can access by key with '.'. Whitespace or special
+              characters in the keys are not supported.
+                |.myDict.foo.bar|
+
+  |.+         Begins the variable compiler, joining to the last item. Example:
+                I think |.+foo|+ is great ==> I think fngi is great
+
   |<char>     Other single-character commands are implemented by extensions,
               such as ZoaMark
 ===
@@ -134,8 +148,10 @@ The following are ZoaMark extensions:
 
   |_          (inline) underlined until _ Example: 'The cheese is |_very_ good.'
 
-  |&          (inline) path or universal resource locator (URL). Example:
-                  Just |&{search| http://google.com} for it
+  |&          (inline) path or link (URL). Commonly called a "reference" Example:
+                  Part of the |&{Civboot| http://civboot.org} project.
+              Can also be used as just the link:
+                  Part of the |&http://civboot.org| project.
 
   |[          (inline) code until closing ]. Any number of [ can be used:
                   Some code: |[[this is [ all ] inline code]] wasn't that nice?
