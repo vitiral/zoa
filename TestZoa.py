@@ -4,7 +4,7 @@ from pprint import pprint as pp
 from zoa import *
 
 def assert_roundtrip(v):
-  zoa = Zoa.from_(v)
+  zoa = Zoa.from_bytes(v)
   b = zoa.serialize()
   result_zoa = from_zoab(b)
   pp(result_zoa.arr)

@@ -63,29 +63,31 @@ An array is specified using curly braces and can be nested, like this:
   }
 ===
 
-Whitespace is always ignored until it hits the first text or special
-character, after which newlines are treated as spaces and special characters use
-c-like escapes. Here are the valid escapes in text:
+Leading whitespace is always ignored until the first character, after which
+newlines are treated as spaces and special characters use c-like escapes. Here
+are the valid escapes in text:
 |===
   \n          newline
   \t          tab
   \|          a literal '|' character
   \{          a literal '{' character
   \}          a literal '}' character
-  \           a literal space character (used at beginning of text)
+  \s
+  \           a literal space character
   \xHH        hex byte of value 0xHH
   \<newline>  line continuation. When \ is used at the end of a line no
               space will be insert when going to the next line.
-===
 
-For instance,
-      there is only one space after the comma above. \
+
+      An example,
+      there is one space after the comma above. \
       \  However there are three spaces after the period since
       an escape was used both before and after the newline.|
+===
+
 
 The following are how to use commands. Commands must be specified immediately
 following either a pipe or curly brace:|
-
 |===
   |X          Where X is a non-whitespace character. Runs a command, some of
               which are defined below. Note that multiple '|' together are
@@ -251,7 +253,7 @@ human written zoat.|
 |> 0x80 will still be illegal for pure-zoab related functions, which expect the
 data to already be deserialzed.|
 
-0x80 will signal that the nex byte "steam type". The supported ones are:|
+0x80 will signal that the next byte "steam type". The supported ones are:|
 |lu{
   0: pure unstructured data with no special meaning.|
   1: _mostly_ human readable data. i.e. struct fields are names, integers are in

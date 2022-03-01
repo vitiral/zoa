@@ -16,11 +16,11 @@ class Zoa(object):
   arr: list["Zoa"]
 
   @classmethod
-  def from_(cls, value):
+  def from_bytes(cls, value):
     if isbytes(value): return cls.new_data(value)
     out = []
     for v in value:
-      out.append(Zoa.from_(v))
+      out.append(Zoa.from_bytes(v))
     return cls.new_arr(out)
 
   def to_py(self):
