@@ -263,6 +263,7 @@ data to already be deserialzed.|
     user-assigned integers, data is in binary format, etc. The deserializer
     obviously needs access to a backwards-compatible reference (i.e. a struct
     definition) to know how to deserialize this data.|
+  3: log event, used for zoa's own core logging.
 }
 
 We also reserve J=1 T=1 L=0 to mean that the next bytes value is actually a

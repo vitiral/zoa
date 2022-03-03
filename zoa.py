@@ -8,6 +8,8 @@ ZOA_JOIN = 0x80
 ZOA_ARR = 0x40
 ZOA_DATA = 0x00
 
+class Eof(Exception): pass
+
 def isbytes(v): return isinstance(v, (bytes, bytearray))
 
 @dataclass
@@ -90,10 +92,7 @@ def write_arr(bw: io.BytesIO, arr: list[Zoa]):
     while True:
       if i == len(arr): return
       if j >= 63: break
-
-      print(f"i={i}  j={j}")
       v = arr[i]
-
       if v.data  is not None: write_data(bw, v.data)
       elif v.arr is not None: write_arr(bw, v.arr)
       else: raise ValueError(v)
@@ -104,8 +103,11 @@ def write_arr(bw: io.BytesIO, arr: list[Zoa]):
 def readexact(br: io.BytesIO, to: bytearray, length: int):
   while length:
     got = br.read(length)
+    if not got: raise Eof()
     length -= len(got)
     to.extend(got)
+    if not length: break
+
 
 def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
   out = None
@@ -123,7 +125,6 @@ def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
     length = ZOA_LEN_MASK & meta
 
     if ty: # is arr
-      print("??? length=", length, 'join=', ZOA_JOIN & meta)
       for _ in range(length):
         out.arr.append(from_zoab(br))
     else:  # is data
@@ -133,4 +134,3 @@ def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
     if not join:
       return out
     prev_ty = ty
-    print("??? join")
