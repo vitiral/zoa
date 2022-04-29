@@ -2,7 +2,7 @@ import io
 import unittest
 import dataclasses
 
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 from dataclasses import dataclass
 from collections import OrderedDict
 
@@ -143,34 +143,39 @@ def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
 class ZoaTy(object):
   """A result of parsing a *.ty file."""
 
-
-class ZoaTyStruct(ZoaTy):
-  """A `struct [...]` type"""
-  def __init__(self, fields):
-    self.dc = dc
-
 class Bytes(bytes):
   @classmethod
-  def fromZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
+  def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
+
+def intBytesLen(v: int) -> int:
+  if v <= 0xFF:       return 1
+  if v <= 0xFFFF:     return 2
+  if v <= 0xFFFFFF:   return 3
+  if v <= 0xFFFFFFFF: return 4
+  raise ValueError(f"Int too large: {v}")
 
 class Int(int):
   @classmethod
-  def fromZ(cls, raw: ZoaRaw) -> int:
+  def frZ(cls, raw: ZoaRaw) -> int:
     if raw.arr:
       assert 1 == len(raw.arr)
       return -Int.from_bytes(raw.arr[0].data, byteorder='big')
     return Int.from_bytes(raw.data, byteorder='big')
 
   def toZ(self) -> ZoaRaw:
-    if v < 0:
-      return ZoaRaw.new_arr(
-          [ZoaRaw.new_data(abs(self).to_bytes(byteorder='big'))])
-    return self.to_bytes(byteorder='big')
+    length = intBytesLen(abs(self))
+    v = abs(self).to_bytes(length, byteorder='big')
+    z = ZoaRaw.new_data(v)
+    if self >= 0: return z
+    return ZoaRaw.new_arr([z])
+
 
 class IntArr(list, ZoaTy):
   @classmethod
-  def fromZ(cls, raw: ZoaRaw) -> "IntArr": return cls(Int.fromZ(z) for z in raw.arr)
+  def frPy(cls, l: Iterable[int]): return cls([Int(i) for i in l])
+  @classmethod
+  def frZ(cls, raw: ZoaRaw) -> "IntArr": return cls(Int.frZ(z) for z in raw.arr)
   def toZ(a: "IntArr") -> ZoaRaw: return ZoaRaw.new_arr([Int.toZ(v) for v in a])
 
 
@@ -192,23 +197,23 @@ class Field:
   ty: Any
 
 @dataclass(init=False)
-class StructBase:
+class StructBase(ZoaTy):
   _fields: Dict
 
   @classmethod
-  def fromZ(cls, z: ZoaRaw):
+  def frZ(cls, z: ZoaRaw):
     args = []
-    posArgs = Int.fromZ(z.arr[0]) # number of positional args
+    posArgs = Int.frZ(z.arr[0]) # number of positional args
     fields = cls._fields.items()
     for pos in range(posArgs):
       _name, f = next(fields)
       assert f.zid is None
-      args.append(f.ty.fromZ(z.arr(1 + pos)))
+      args.append(f.ty.frZ(z.arr(1 + pos)))
     kwargs = {}
     byId = {f.zid: (name, f.ty) for name, f in cls._fields.items()}
     for z in z.arr[1+posArgs:]:
-      name, ty = byId[Int.fromZ(zi[0])]
-      kwargs[name] = ty.fromZ(zi[1])
+      name, ty = byId[Int.frZ(zi[0])]
+      kwargs[name] = ty.frZ(zi[1])
     return cls(*args, **kwargs)
 
   def toZ(self) -> ZoaRaw:

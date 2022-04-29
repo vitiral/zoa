@@ -63,8 +63,16 @@ class TestZoaRaw(unittest.TestCase):
     assert_roundtrip(a)
 
 
-class TestZoaRaw(unittest.TestCase):
-  pass
+class TestZoaTy(unittest.TestCase):
+  def test_int(self):
+    assert b'\x42' == Int(0x42).toZ().data
+    assert 0x42 == Int.frZ(ZoaRaw.new_data(b'\x42'))
+
+    z = Int(-0x42).toZ()
+    assert len(z.arr) == 1
+    assert b'\x42' == z.arr[0].data
+    assert -0x42 == Int.frZ(ZoaRaw.new_arr([ZoaRaw.new_data(b'\x42')]))
+
 
 if __name__ == '__main__':
   unittest.main()
