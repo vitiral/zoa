@@ -4,7 +4,7 @@ from pprint import pprint as pp
 from zoa import *
 
 def assert_roundtrip(v):
-  zoa = Zoa.from_bytes(v)
+  zoa = ZoaRaw.from_bytes(v)
   b = zoa.serialize()
   result_zoa = from_zoab(b)
   pp(result_zoa.arr)
@@ -15,10 +15,7 @@ def assert_roundtrip(v):
   print(f'len: {len(v)} == {len(result)}')
   assert v == result
 
-class TestZoa(unittest.TestCase):
-  def test_pass(self):
-    pass
-
+class TestZoaRaw(unittest.TestCase):
   def test_write_str(self):
     b = io.BytesIO()
     write_data(b, b'hi')
@@ -28,7 +25,7 @@ class TestZoa(unittest.TestCase):
 
   def test_write_arr_str(self):
     bw = io.BytesIO()
-    v = [Zoa.new_data(b'hi')]
+    v = [ZoaRaw.new_data(b'hi')]
     assert v[0].data == b'hi'
     write_arr(bw, v)
     b = bw.getvalue()
@@ -39,7 +36,7 @@ class TestZoa(unittest.TestCase):
 
   def test_from_arr_str(self):
     v = from_zoab(io.BytesIO(b'\x02hi'))
-    assert v == Zoa.new_data(b'hi')
+    assert v == ZoaRaw.new_data(b'hi')
 
   def test_from_to(self):
     assert_roundtrip([])
@@ -64,6 +61,10 @@ class TestZoa(unittest.TestCase):
   def test_long_round(self):
     a = [ b'one', b'two', b'three', b'four', b'five' ] * 30 # 150
     assert_roundtrip(a)
+
+
+class TestZoaRaw(unittest.TestCase):
+  pass
 
 if __name__ == '__main__':
   unittest.main()

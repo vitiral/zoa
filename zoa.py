@@ -1,7 +1,10 @@
 import io
 import unittest
+import dataclasses
 
+from typing import Any, Dict
 from dataclasses import dataclass
+from collections import OrderedDict
 
 ZOA_LEN_MASK = 0x3F
 ZOA_JOIN = 0x80
@@ -13,16 +16,16 @@ class Eof(Exception): pass
 def isbytes(v): return isinstance(v, (bytes, bytearray))
 
 @dataclass
-class Zoa(object):
+class ZoaRaw(object):
   data: bytearray
-  arr: list["Zoa"]
+  arr: list["ZoaRaw"]
 
   @classmethod
   def from_bytes(cls, value):
     if isbytes(value): return cls.new_data(value)
     out = []
     for v in value:
-      out.append(Zoa.from_bytes(v))
+      out.append(ZoaRaw.from_bytes(v))
     return cls.new_arr(out)
 
   def to_py(self):
@@ -81,7 +84,7 @@ def write_data(bw: io.BytesIO, data: bytes):
   write_byte(bw, len(data) - i) # note: not joined
   bw.write(data[i:])
 
-def write_arr(bw: io.BytesIO, arr: list[Zoa]):
+def write_arr(bw: io.BytesIO, arr: list[ZoaRaw]):
   i = 0
   while True:
     remaining = len(arr) - i
@@ -109,7 +112,8 @@ def readexact(br: io.BytesIO, to: bytearray, length: int):
     if not length: break
 
 
-def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
+
+def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
   out = None
   join = 0
 
@@ -120,8 +124,8 @@ def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
     if join:
       if ty != prev_ty: raise ValueError("join different types")
     else:
-      if ZOA_ARR & ty:  out = Zoa.new_arr()
-      else:             out = Zoa.new_data()
+      if ZOA_ARR & ty:  out = ZoaRaw.new_arr()
+      else:             out = ZoaRaw.new_data()
     length = ZOA_LEN_MASK & meta
 
     if ty: # is arr
@@ -134,3 +138,103 @@ def from_zoab(br: io.BytesIO, joinTo:Zoa = None):
     if not join:
       return out
     prev_ty = ty
+
+
+class ZoaTy(object):
+  """A result of parsing a *.ty file."""
+
+
+class ZoaTyStruct(ZoaTy):
+  """A `struct [...]` type"""
+  def __init__(self, fields):
+    self.dc = dc
+
+class Bytes(bytes):
+  @classmethod
+  def fromZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
+  def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
+
+class Int(int):
+  @classmethod
+  def fromZ(cls, raw: ZoaRaw) -> int:
+    if raw.arr:
+      assert 1 == len(raw.arr)
+      return -Int.from_bytes(raw.arr[0].data, byteorder='big')
+    return Int.from_bytes(raw.data, byteorder='big')
+
+  def toZ(self) -> ZoaRaw:
+    if v < 0:
+      return ZoaRaw.new_arr(
+          [ZoaRaw.new_data(abs(self).to_bytes(byteorder='big'))])
+    return self.to_bytes(byteorder='big')
+
+class IntArr(list, ZoaTy):
+  @classmethod
+  def fromZ(cls, raw: ZoaRaw) -> "IntArr": return cls(Int.fromZ(z) for z in raw.arr)
+  def toZ(a: "IntArr") -> ZoaRaw: return ZoaRaw.new_arr([Int.toZ(v) for v in a])
+
+
+class TyEnv:
+  def __init__(self):
+    self.tys = {
+        "Int": Int,
+        "Bytes": Bytes,
+        "IntArr": IntArr,
+    }
+
+  def register(self, name, cls):
+    self.tys[name] = cls
+
+@dataclass
+class Field:
+  zid: int
+  name: str
+  ty: Any
+
+@dataclass(init=False)
+class StructBase:
+  _fields: Dict
+
+  @classmethod
+  def fromZ(cls, z: ZoaRaw):
+    args = []
+    posArgs = Int.fromZ(z.arr[0]) # number of positional args
+    fields = cls._fields.items()
+    for pos in range(posArgs):
+      _name, f = next(fields)
+      assert f.zid is None
+      args.append(f.ty.fromZ(z.arr(1 + pos)))
+    kwargs = {}
+    byId = {f.zid: (name, f.ty) for name, f in cls._fields.items()}
+    for z in z.arr[1+posArgs:]:
+      name, ty = byId[Int.fromZ(zi[0])]
+      kwargs[name] = ty.fromZ(zi[1])
+    return cls(*args, **kwargs)
+
+  def toZ(self) -> ZoaRaw:
+    # find how many positional args exist
+    posArgs = 0; posArgsDone = False
+    for name, f in self._fields.items():
+      if f.zid is None: # positional arg
+        if self.get(name) is None: posArgsDone = True
+        elif posArgsDone: raise ValueError(
+          f"{name} has value after previous positional arg wasn't specified")
+        else: posArgs += 1
+
+    out = [Int(posArgs).toZ()] # starts with number of positional arguments
+    for name, f in self._fields.items():
+      if zid is None: out.append(self.get(name).toZ())
+      else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
+    return ZoaRaw.new_arr(out)
+
+
+def makeStruct(env: TyEnv, name: str, fields: OrderedDict):
+  dataFields = [(n, f.ty) for (n, f) in fields.items()]
+  dataFields.append(('_fields', OrderedDict,
+    dataclasses.field(default=fields, repr=False, hash=False, kw_only=True)))
+
+  return dataclasses.make_dataclass(
+    name,
+    dataFields,
+    bases=(StructBase,),
+  )

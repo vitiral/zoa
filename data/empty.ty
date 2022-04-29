@@ -1,0 +1,3 @@
+struct Empty []
+
+struct One [ a: Ui ]
