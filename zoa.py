@@ -111,8 +111,6 @@ def readexact(br: io.BytesIO, to: bytearray, length: int):
     to.extend(got)
     if not length: break
 
-
-
 def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
   out = None
   join = 0
@@ -140,9 +138,6 @@ def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
     prev_ty = ty
 
 
-class ZoaTy(object):
-  """A result of parsing a *.ty file."""
-
 def intBytesLen(v: int) -> int:
   if v <= 0xFF:       return 1
   if v <= 0xFFFF:     return 2
@@ -165,7 +160,7 @@ class Int(int):
     if self >= 0: return z
     return ZoaRaw.new_arr([z])
 
-class IntArr(list, ZoaTy):
+class IntArr(list):
   @classmethod # TODO: __new__?
   def frPy(cls, l: Iterable[int]): return cls([Int(i) for i in l])
   @classmethod
@@ -177,36 +172,23 @@ class Bytes(bytes):
   def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
 
-class TyEnv:
-  def __init__(self):
-    self.tys = {
-        "Int": Int,
-        "Bytes": Bytes,
-        "IntArr": IntArr,
-    }
-
-  def register(self, name, cls):
-    self.tys[name] = cls
-
 @dataclass
 class Field:
-  zid: int
-  name: str
   ty: Any
+  zid: int = None
 
 @dataclass(init=False)
-class StructBase(ZoaTy):
-  _fields: Dict
-
+class StructBase:
   @classmethod
   def frZ(cls, z: ZoaRaw):
     args = []
     posArgs = Int.frZ(z.arr[0]) # number of positional args
-    fields = cls._fields.items()
+    fields = iter(cls._fields.items())
     for pos in range(posArgs):
       _name, f = next(fields)
       assert f.zid is None
-      args.append(f.ty.frZ(z.arr(1 + pos)))
+      args.append(f.ty.frZ(z.arr[1 + pos]))
+    print(args)
     kwargs = {}
     byId = {f.zid: (name, f.ty) for name, f in cls._fields.items()}
     for z in z.arr[1+posArgs:]:
@@ -219,25 +201,33 @@ class StructBase(ZoaTy):
     posArgs = 0; posArgsDone = False
     for name, f in self._fields.items():
       if f.zid is None: # positional arg
-        if self.get(name) is None: posArgsDone = True
+        if getattr(self, name) is None: posArgsDone = True
         elif posArgsDone: raise ValueError(
           f"{name} has value after previous positional arg wasn't specified")
         else: posArgs += 1
 
     out = [Int(posArgs).toZ()] # starts with number of positional arguments
     for name, f in self._fields.items():
-      if zid is None: out.append(self.get(name).toZ())
+      if f.zid is None: out.append(getattr(self, name).toZ())
       else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
     return ZoaRaw.new_arr(out)
 
+class TyEnv:
+  def __init__(self):
+    self.tys = {
+        "Int": Int,
+        "Bytes": Bytes,
+        "IntArr": IntArr,
+    }
 
-def makeStruct(env: TyEnv, name: str, fields: OrderedDict):
-  dataFields = [(n, f.ty) for (n, f) in fields.items()]
-  dataFields.append(('_fields', OrderedDict,
-    dataclasses.field(default=fields, repr=False, hash=False, kw_only=True)))
-
-  return dataclasses.make_dataclass(
-    name,
-    dataFields,
-    bases=(StructBase,),
-  )
+  def struct(self, mod: str, name: str, fields: OrderedDict):
+    modname = mod + '.' + name if mod else name
+    if modname in self.tys: raise KeyError(f"{modname} already exists")
+    ty = dataclasses.make_dataclass(
+      name,
+      [(n, f.ty) for (n, f) in fields.items()],
+      bases=(StructBase,),
+    )
+    ty._fields = fields
+    self.tys[modname] = ty
+    return ty

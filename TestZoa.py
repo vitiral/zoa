@@ -64,6 +64,9 @@ class TestZoaRaw(unittest.TestCase):
 
 
 class TestZoaTy(unittest.TestCase):
+  def setUp(self):
+    self.env = TyEnv()
+
   def test_int(self):
     assert b'\x42' == Int(0x42).toZ().data
     assert 0x42 == Int.frZ(ZoaRaw.new_data(b'\x42'))
@@ -84,6 +87,18 @@ class TestZoaTy(unittest.TestCase):
     b = Bytes(b'abc 123')
     assert b'abc 123' == b.toZ().data
     assert b == Bytes.frZ(ZoaRaw.new_data(b'abc 123'))
+
+  def test_struct(self):
+    ty = self.env.struct(None, 'foo', OrderedDict([
+        ('a', Field(Int)),
+    ]))
+    z = ZoaRaw.new_arr([
+        Int(1).toZ(),  # numPositional
+        Int(0x77).toZ(), # value of 'a'
+    ])
+    s = ty.frZ(z)
+    assert s.a == 0x77
+    assert z == s.toZ()
 
 if __name__ == '__main__':
   unittest.main()
