@@ -80,5 +80,10 @@ class TestZoaTy(unittest.TestCase):
     assert b'\x09' == z.arr[9].data
     assert ia == IntArr.frZ(z)
 
+  def test_bytes(self):
+    b = Bytes(b'abc 123')
+    assert b'abc 123' == b.toZ().data
+    assert b == Bytes.frZ(ZoaRaw.new_data(b'abc 123'))
+
 if __name__ == '__main__':
   unittest.main()
