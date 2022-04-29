@@ -271,6 +271,65 @@ pointer to more data. This allows fngi (or other languages) to use a maximum
 block size of 4kB while still permitting arbitrary length zoab data.|
 
 {**************
+*} |h2 Type Specification
+> WARNING: This section is currently being worked on so is not yet polished.
+
+Zoa also has a default type protocol and text specification for generating
+serializers and deserializers for zoab data. These are typically contained in
+`.zt` files.
+
+Zoa types are specified in a language similar to protobufs, with a few key
+differences. For an overview:
+
+Native types include:
+* Data, Int, Num, TimeMilli (unix time in milliseconds, can be negative), Path
+  (i.e. file path)
+* Arr(generic)
+* IntMap(Int key, generic value), DataMap(Data key, generic value)
+* Dyn: dynamic (runtime) type
+
+Users can create their own struct types with the format below. Struct fields can
+be positional or have an id. Default values can be provided, otherwise all
+arguments are required.
+
+```
+\ Comments use '\' character
+struct Foo [
+  a: Int; \ positional required argument.
+  b: Int = 0; \ positional argument with default.
+  c: Data = ||; \ bytes argument with default.
+  d:0 Int = 0; \ indexed argument with default.
+  d:1 Arr[Int] = 0;
+]
+```
+
+* Positional args must be specified in the order they appear in the zoab arr.
+  The first value in the arr is an Int with the number of positional args.
+  Remaining args will use their default value.
+* Indexed args can be specified in any order. Args without a default must be
+  specified or an error is thrown.
+
+Similarily, enumerated values can be specified. Enums must always specify their
+id. All ids from [0 - max specified] must be declared (in any order).
+
+```
+struct Cake [ isChocolate: Int ]
+struct Pizza [ hasCheese: Int; hasPeperoni: Int = 0]
+
+enum Food [
+  none:0; \ note: empty type, no data
+  someNuts:3 Int; \ note: declared out of order (OK)
+  pizza:1 Pizza;
+  cake:2 Cake;
+]
+```
+
+Some Notes:
+* The Dyn type is an arr. `@0` contains a meta byte specifying the type. The
+  following are supported: any non-generic (except Dyn), Arr[Dyn], IntMap[Dyn],
+  DataMap[Dyn].
+
+{**************
 *} |h2 LICENSING|
 This work is part of the Civboot project and therefore primarily exists for
 educational purposes. Attribution to the authors and project is appreciated but
