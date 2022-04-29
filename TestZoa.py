@@ -73,6 +73,12 @@ class TestZoaTy(unittest.TestCase):
     assert b'\x42' == z.arr[0].data
     assert -0x42 == Int.frZ(ZoaRaw.new_arr([ZoaRaw.new_data(b'\x42')]))
 
+  def test_int_arr(self):
+    ia = IntArr(range(10))
+    z = ia.toZ()
+    assert b'\x00' == z.arr[0].data
+    assert b'\x09' == z.arr[9].data
+    assert ia == IntArr.frZ(z)
 
 if __name__ == '__main__':
   unittest.main()

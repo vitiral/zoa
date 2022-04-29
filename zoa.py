@@ -143,11 +143,6 @@ def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
 class ZoaTy(object):
   """A result of parsing a *.ty file."""
 
-class Bytes(bytes):
-  @classmethod
-  def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
-  def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
-
 def intBytesLen(v: int) -> int:
   if v <= 0xFF:       return 1
   if v <= 0xFFFF:     return 2
@@ -170,14 +165,17 @@ class Int(int):
     if self >= 0: return z
     return ZoaRaw.new_arr([z])
 
-
 class IntArr(list, ZoaTy):
-  @classmethod
+  @classmethod # TODO: __new__?
   def frPy(cls, l: Iterable[int]): return cls([Int(i) for i in l])
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> "IntArr": return cls(Int.frZ(z) for z in raw.arr)
   def toZ(a: "IntArr") -> ZoaRaw: return ZoaRaw.new_arr([Int.toZ(v) for v in a])
 
+class Bytes(bytes):
+  @classmethod
+  def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
+  def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
 
 class TyEnv:
   def __init__(self):
