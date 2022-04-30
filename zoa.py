@@ -146,6 +146,11 @@ def intBytesLen(v: int) -> int:
   raise ValueError(f"Int too large: {v}")
 
 class Int(int):
+  name = 'Int'
+
+  @classmethod
+  def frPy(cls, *args, **kwargs): return cls(*args, **kwargs)
+
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> int:
     if raw.arr:
@@ -161,13 +166,17 @@ class Int(int):
     return ZoaRaw.new_arr([z])
 
 class IntArr(list):
-  @classmethod # TODO: __new__?
+  @classmethod
   def frPy(cls, l: Iterable[int]): return cls([Int(i) for i in l])
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> "IntArr": return cls(Int.frZ(z) for z in raw.arr)
-  def toZ(a: "IntArr") -> ZoaRaw: return ZoaRaw.new_arr([Int.toZ(v) for v in a])
+  def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([Int.toZ(v) for v in self])
 
 class Bytes(bytes):
+  name = 'Bytes'
+
+  @classmethod
+  def frPy(cls, *args, **kwargs): return cls(*args, **kwargs)
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
@@ -176,6 +185,15 @@ class Bytes(bytes):
 class Field:
   ty: Any
   zid: int = None
+
+@dataclass(init=False)
+class ArrBase(list):
+  @classmethod
+  def frPy(cls, l: Iterable[Any]): return cls([cls._ty.frPy(i) for i in l])
+  @classmethod
+  def frZ(cls, raw: ZoaRaw): return cls(cls._ty.frZ(z) for z in raw.arr)
+  def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
+
 
 @dataclass(init=False)
 class StructBase:
@@ -212,6 +230,8 @@ class StructBase:
       else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
     return ZoaRaw.new_arr(out)
 
+def modname(mod, name): return mod + '.' + name if mod else name
+
 class TyEnv:
   def __init__(self):
     self.tys = {
@@ -220,14 +240,24 @@ class TyEnv:
         "IntArr": IntArr,
     }
 
+  def arr(self, ty: Any) -> ArrBase:
+    """Create or get generic array type."""
+    name = f'Array[{ty.name}]'
+    existing = self.tys.get(name)
+    if existing: return existing
+    arrTy = type(name, (ArrBase,), {'_ty': ty, 'name': name})
+    self.tys[name] = arrTy
+    return arrTy
+
   def struct(self, mod: str, name: str, fields: OrderedDict):
-    modname = mod + '.' + name if mod else name
-    if modname in self.tys: raise KeyError(f"{modname} already exists")
+    mn = modname(mod, name)
+    if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
     ty = dataclasses.make_dataclass(
       name,
       [(n, f.ty) for (n, f) in fields.items()],
       bases=(StructBase,),
     )
+    ty.name = mn
     ty._fields = fields
-    self.tys[modname] = ty
+    self.tys[mn] = ty
     return ty
