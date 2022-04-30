@@ -156,6 +156,11 @@ following either a pipe or curly brace:|
   |.+         Joins the variable to the last item. Example:
                 { I think |.+foo|+is great } |* { I think fngi is great }
 
+  |[0-9]      An integer (big-endian). 0x (hex), 0b (binary) and 0c (char) are
+              supported. (see Type Specification Dyn)
+
+  |-          A negative integer (big-endian, see Type Specification Dyn)
+
   |<char>     Other single-character commands are implemented by extensions,
               such as ZoaMark
 ===
@@ -303,26 +308,39 @@ struct Foo [
 ]
 ```
 
-* Positional args must be specified in the order they appear in the zoab arr.
-  The first value in the arr is an Int with the number of positional args.
-  Remaining args will use their default value.
-* Indexed args can be specified in any order. Args without a default must be
-  specified or an error is thrown.
+The struct protocol is:
+* The first items contains the number of positional args P.
+* The next P items contains the first P specified positional arguments.
+  Any unspecified positional args must have a default value.
+* Indexed args can be specified in any order.
+* Any unspecified args must have a default.
 
-Similarily, enumerated values can be specified. Enums must always specify their
+Similarily, enumerated values can be defined. Enums must always specify their
 id. All ids from [0 - max specified] must be declared (in any order).
 
 ```
+struct Cheese [ isCheddar: Int ]
 struct Cake [ isChocolate: Int ]
-struct Pizza [ hasCheese: Int; hasPeperoni: Int = 0]
+struct Pizza [
+  cheese: Cheese = {
+    isCheddar|1|
+  };
+  hasPeperoni: Int = 0;
+]
 
 enum Food [
   none:0; \ note: empty type, no data
   someNuts:3 Int; \ note: declared out of order (OK)
   pizza:1 Pizza;
   cake:2 Cake;
+  cheeses:3 Arr[Cheese];
 ]
 ```
+
+The enum protocol is:
+* The first item contains the enum variant, i.e. none, someNuts, etc.
+* If the variant is not an `Arr` or `*Map`, the next item is the value.
+* else, the next N values are the data for the array.
 
 Some Notes:
 * The Dyn type is an arr. `@0` contains a meta byte specifying the type. The
