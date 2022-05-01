@@ -82,7 +82,7 @@ class TestZoaTy(unittest.TestCase):
     z = ai.toZ()
     assert b'\x00' == z.arr[0].data
     assert b'\x09' == z.arr[9].data
-    assert ai == IntArr.frZ(z)
+    assert ai == ArrInt.frZ(z)
 
   def test_bytes(self):
     b = Bytes(b'abc 123')
@@ -100,6 +100,24 @@ class TestZoaTy(unittest.TestCase):
     s = ty.frZ(z)
     assert s.a == 0x77
     assert z == s.toZ()
+
+  def test_bitmap(self):
+    ty = self.env.bitmap(None, 'bm', OrderedDict([
+        ('a',     BmVar(0x01, 0x03)),
+        ('b',     BmVar(0x03, 0x03)),
+        ('noTop', BmVar(0x00, 0x10)),
+        ('top',   BmVar(0x10, 0x10)),
+    ]))
+    bm = ty();      assert 0 == bm.value
+    bm.setTop();    assert 0x10 == bm.value
+    bm.setNoTop();  assert 0x00 == bm.value
+    bm.setA();      assert 0x01 == bm.value
+    bm.setB();      assert 0x03 == bm.value
+    bm.setA();      assert 0x01 == bm.value
+    bm.setTop();    assert 0x11 == bm.value
+    assert True == bm.isA()
+    assert False == bm.isB()
+    assert True == bm.isTop()
 
 if __name__ == '__main__':
   unittest.main()

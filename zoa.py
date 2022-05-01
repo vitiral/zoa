@@ -165,13 +165,6 @@ class Int(int):
     if self >= 0: return z
     return ZoaRaw.new_arr([z])
 
-class IntArr(list):
-  @classmethod
-  def frPy(cls, l: Iterable[int]): return cls([Int(i) for i in l])
-  @classmethod
-  def frZ(cls, raw: ZoaRaw) -> "IntArr": return cls(Int.frZ(z) for z in raw.arr)
-  def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([Int.toZ(v) for v in self])
-
 class Bytes(bytes):
   name = 'Bytes'
 
@@ -193,7 +186,6 @@ class ArrBase(list):
   @classmethod
   def frZ(cls, raw: ZoaRaw): return cls(cls._ty.frZ(z) for z in raw.arr)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
-
 
 @dataclass(init=False)
 class StructBase:
@@ -230,6 +222,25 @@ class StructBase:
       else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
     return ZoaRaw.new_arr(out)
 
+@dataclass
+class BmVar: # Bitmap Variant
+  var: int  # the value for this variant, i.e. 0b10
+  msk: int  # the mask for this variant,  i.e. 0b11
+
+  def _setVariantClosure(varSelf):
+    def closure(bitmapSelf):
+      bitmapSelf.value = ((~varSelf.msk) & bitmapSelf.value) | varSelf.var
+    return closure
+
+  def _isVariantClosure(varSelf):
+    def closure(bitmapSelf):
+      return varSelf.msk & bitmapSelf.value == varSelf.var
+    return closure
+
+@dataclass(init=False)
+class BitmapBase:
+  value: int = 0
+
 def modname(mod, name): return mod + '.' + name if mod else name
 
 class TyEnv:
@@ -237,7 +248,6 @@ class TyEnv:
     self.tys = {
         "Int": Int,
         "Bytes": Bytes,
-        "IntArr": IntArr,
     }
 
   def arr(self, ty: Any) -> ArrBase:
@@ -249,7 +259,7 @@ class TyEnv:
     self.tys[name] = arrTy
     return arrTy
 
-  def struct(self, mod: str, name: str, fields: OrderedDict):
+  def struct(self, mod: str, name: str, fields: OrderedDict[str, Field]):
     mn = modname(mod, name)
     if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
     ty = dataclasses.make_dataclass(
@@ -259,5 +269,16 @@ class TyEnv:
     )
     ty.name = mn
     ty._fields = fields
+    self.tys[mn] = ty
+    return ty
+
+  def bitmap(self, mod: str, name: str, variants: OrderedDict[str, BmVar]):
+    mn = modname(mod, name)
+    methods = {'name': mn}
+    for n, var in variants.items():
+      n = n[0].upper() + (n[1:] if len(n) > 1 else '') # capitalize first letter
+      methods['is' + n] = var._isVariantClosure()
+      methods['set' + n] = var._setVariantClosure()
+    ty = type(name, (BitmapBase,), methods)
     self.tys[mn] = ty
     return ty
