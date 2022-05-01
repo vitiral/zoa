@@ -2,9 +2,9 @@ import io
 import unittest
 import dataclasses
 
-from typing import Any, Dict, Iterable
+from enum import Enum
+from typing import Any, Dict, List, Tuple, Iterable
 from dataclasses import dataclass
-from collections import OrderedDict
 
 ZOA_LEN_MASK = 0x3F
 ZOA_JOIN = 0x80
@@ -175,7 +175,7 @@ class Bytes(bytes):
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
 
 @dataclass
-class Field:
+class StructField:
   ty: Any
   zid: int = None
 
@@ -193,14 +193,14 @@ class StructBase:
   def frZ(cls, z: ZoaRaw):
     args = []
     posArgs = Int.frZ(z.arr[0]) # number of positional args
-    fields = iter(cls._fields.items())
+    fields = iter(cls._fields)
     for pos in range(posArgs):
       _name, f = next(fields)
       assert f.zid is None
       args.append(f.ty.frZ(z.arr[1 + pos]))
     print(args)
     kwargs = {}
-    byId = {f.zid: (name, f.ty) for name, f in cls._fields.items()}
+    byId = {f.zid: (name, f.ty) for name, f in cls._fields}
     for z in z.arr[1+posArgs:]:
       name, ty = byId[Int.frZ(zi[0])]
       kwargs[name] = ty.frZ(zi[1])
@@ -209,7 +209,7 @@ class StructBase:
   def toZ(self) -> ZoaRaw:
     # find how many positional args exist
     posArgs = 0; posArgsDone = False
-    for name, f in self._fields.items():
+    for name, f in self._fields:
       if f.zid is None: # positional arg
         if getattr(self, name) is None: posArgsDone = True
         elif posArgsDone: raise ValueError(
@@ -217,7 +217,7 @@ class StructBase:
         else: posArgs += 1
 
     out = [Int(posArgs).toZ()] # starts with number of positional arguments
-    for name, f in self._fields.items():
+    for name, f in self._fields:
       if f.zid is None: out.append(getattr(self, name).toZ())
       else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
     return ZoaRaw.new_arr(out)
@@ -259,12 +259,12 @@ class TyEnv:
     self.tys[name] = arrTy
     return arrTy
 
-  def struct(self, mod: str, name: str, fields: OrderedDict[str, Field]):
+  def struct(self, mod: str, name: str, fields: List[Tuple[str, StructField]]):
     mn = modname(mod, name)
     if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
     ty = dataclasses.make_dataclass(
       name,
-      [(n, f.ty) for (n, f) in fields.items()],
+      [(n, f.ty) for (n, f) in fields],
       bases=(StructBase,),
     )
     ty.name = mn
@@ -272,13 +272,93 @@ class TyEnv:
     self.tys[mn] = ty
     return ty
 
-  def bitmap(self, mod: str, name: str, variants: OrderedDict[str, BmVar]):
+  def bitmap(self, mod: str, name: str, variants: List[Tuple[str, BmVar]]):
     mn = modname(mod, name)
     methods = {'name': mn}
-    for n, var in variants.items():
+    for n, var in variants:
       n = n[0].upper() + (n[1:] if len(n) > 1 else '') # capitalize first letter
       methods['is' + n] = var._isVariantClosure()
       methods['set' + n] = var._setVariantClosure()
     ty = type(name, (BitmapBase,), methods)
     self.tys[mn] = ty
     return ty
+
+class TG(Enum): # Token Group
+  T_NUM = 0
+  T_HEX = 1
+  T_ALPHA = 2
+  T_SINGLE = 3
+  T_SYMBOL = 4
+  T_WHITE = 5
+
+  @classmethod
+  def fromChr(cls, c: int):
+    if(c <= ord(' ')):                  return cls.T_WHITE;
+    if(ord('0') <= c and c <= ord('9')): return cls.T_NUM;
+    if(ord('a') <= c and c <= ord('f')): return cls.T_HEX;
+    if(ord('A') <= c and c <= ord('F')): return cls.T_HEX;
+    if(ord('g') <= c and c <= ord('z')): return cls.T_ALPHA;
+    if(ord('G') <= c and c <= ord('Z')): return cls.T_ALPHA;
+    raise ValueError(c)
+
+class ParseError(RuntimeError):
+  def __init__(self, line, msg): return super().__init__(f'line {line}: {msg}')
+
+# @dataclass
+# class Parser:
+#   env: TyEnv = TyEnv.__init__
+#   mod: str = None
+#   buf: bytearray = lambda: bytearray()
+#   i: int = 0
+#   line: int = 1
+# 
+#   def token(self) -> str:
+#     group, starti = None, i
+#     while i < len(buf):
+#       c = buf[i]; i += 1
+#       if c == '\n': line += 1
+#       cgroup = TG.fromChr(c)
+#       if cgroup == TG.T_WHITE:
+#         if group is None: continue
+#         else: return buf[i-1:i]
+#       if cgroup == TG.T_SINGLE:
+#         return buf[i-1:i]
+#       if group is None:     group = cgroup
+#       elif group == cgroup: pass
+#       elif (group <= T_ALPHA) and (cgroup <= T_ALPHA): pass
+#       else: return buf[i-1:i]
+# 
+#   def peek(self) -> str:
+#     starti = i
+#     out = self.token()
+#     i = starti
+#     return out
+# 
+#   def parseError(self, msg): raise ParseError(self.line, msg)
+#   def sugar(self, s):
+#     if self.token() != s.encode('utf-8'): self.parseError(f"Expected |{s}|")
+# 
+#   def parseTy(self) -> Ty:
+#     name = self.token()
+#     # TODO: handle [ ... ] cases
+#     return self.env.tys[name]
+# 
+#   def parseField(self) -> StructField:
+#     name = self.token(); self.sugar(':')
+#     # TODO: handle zid case
+#     ty = self.parseTy()
+#     return (name, StructField(ty=ty))
+# 
+#   def parseStruct(self) -> StructBase:
+#     name = self.token();
+#     fields = []
+#     self.sugar('[')
+#     while self.peek() != ']':
+#       fields.append(self.parseField())
+#       self.sugar(';')
+#     self.sugar(']')
+#     return self.env.struct(self.mod, name, fields)
+# 
+#   def parseFile(self):
+#     while i < len(buf):
+# 

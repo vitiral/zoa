@@ -90,9 +90,9 @@ class TestZoaTy(unittest.TestCase):
     assert b == Bytes.frZ(ZoaRaw.new_data(b'abc 123'))
 
   def test_struct(self):
-    ty = self.env.struct(None, 'foo', OrderedDict([
-        ('a', Field(Int)),
-    ]))
+    ty = self.env.struct(None, 'foo', [
+        ('a', StructField(Int)),
+    ])
     z = ZoaRaw.new_arr([
         Int(1).toZ(),  # numPositional
         Int(0x77).toZ(), # value of 'a'
@@ -102,12 +102,12 @@ class TestZoaTy(unittest.TestCase):
     assert z == s.toZ()
 
   def test_bitmap(self):
-    ty = self.env.bitmap(None, 'bm', OrderedDict([
+    ty = self.env.bitmap(None, 'bm', [
         ('a',     BmVar(0x01, 0x03)),
         ('b',     BmVar(0x03, 0x03)),
         ('noTop', BmVar(0x00, 0x10)),
         ('top',   BmVar(0x10, 0x10)),
-    ]))
+    ])
     bm = ty();      assert 0 == bm.value
     bm.setTop();    assert 0x10 == bm.value
     bm.setNoTop();  assert 0x00 == bm.value
