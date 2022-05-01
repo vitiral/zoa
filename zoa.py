@@ -198,7 +198,6 @@ class StructBase:
       _name, f = next(fields)
       assert f.zid is None
       args.append(f.ty.frZ(z.arr[1 + pos]))
-    print(args)
     kwargs = {}
     byId = {f.zid: (name, f.ty) for name, f in cls._fields}
     for z in z.arr[1+posArgs:]:
@@ -246,8 +245,8 @@ def modname(mod, name): return mod + '.' + name if mod else name
 class TyEnv:
   def __init__(self):
     self.tys = {
-        "Int": Int,
-        "Bytes": Bytes,
+        b'Int': Int,
+        b'Bytes': Bytes,
     }
 
   def arr(self, ty: Any) -> ArrBase:
@@ -259,20 +258,22 @@ class TyEnv:
     self.tys[name] = arrTy
     return arrTy
 
-  def struct(self, mod: str, name: str, fields: List[Tuple[str, StructField]]):
+  def struct(self, mod: bytes, name: bytes, fields: List[Tuple[bytes, StructField]]):
     mn = modname(mod, name)
     if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
     ty = dataclasses.make_dataclass(
-      name,
-      [(n, f.ty) for (n, f) in fields],
+      name.decode('utf-8'),
+      [(n.decode('utf-8'), f.ty) for (n, f) in fields],
       bases=(StructBase,),
     )
     ty.name = mn
     ty._fields = fields
     self.tys[mn] = ty
+    print("??? struct:", ty)
+    print("??? tys:", self.tys)
     return ty
 
-  def bitmap(self, mod: str, name: str, variants: List[Tuple[str, BmVar]]):
+  def bitmap(self, mod: bytes, name: bytes, variants: List[Tuple[bytes, BmVar]]):
     mn = modname(mod, name)
     methods = {'name': mn}
     for n, var in variants:
@@ -282,6 +283,8 @@ class TyEnv:
     ty = type(name, (BitmapBase,), methods)
     self.tys[mn] = ty
     return ty
+
+SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '.', '(', ')']}
 
 class TG(Enum): # Token Group
   T_NUM = 0
@@ -299,66 +302,88 @@ class TG(Enum): # Token Group
     if(ord('A') <= c and c <= ord('F')): return cls.T_HEX;
     if(ord('g') <= c and c <= ord('z')): return cls.T_ALPHA;
     if(ord('G') <= c and c <= ord('Z')): return cls.T_ALPHA;
-    raise ValueError(c)
+    if(ord('_') == c)                  : return cls.T_ALPHA;
+    if(c in SINGLES)                   : return cls.T_SINGLE;
+    return cls.T_SYMBOL
+
+def coaleseTG(group: TG) -> TG:
+  """Convert all alphanumerics to T_ALPHA."""
+  if group.value <= TG.T_ALPHA.value:
+    return TG.T_ALPHA
+  return group
 
 class ParseError(RuntimeError):
   def __init__(self, line, msg): return super().__init__(f'line {line}: {msg}')
 
-# @dataclass
-# class Parser:
-#   env: TyEnv = TyEnv.__init__
-#   mod: str = None
-#   buf: bytearray = lambda: bytearray()
-#   i: int = 0
-#   line: int = 1
-# 
-#   def token(self) -> str:
-#     group, starti = None, i
-#     while i < len(buf):
-#       c = buf[i]; i += 1
-#       if c == '\n': line += 1
-#       cgroup = TG.fromChr(c)
-#       if cgroup == TG.T_WHITE:
-#         if group is None: continue
-#         else: return buf[i-1:i]
-#       if cgroup == TG.T_SINGLE:
-#         return buf[i-1:i]
-#       if group is None:     group = cgroup
-#       elif group == cgroup: pass
-#       elif (group <= T_ALPHA) and (cgroup <= T_ALPHA): pass
-#       else: return buf[i-1:i]
-# 
-#   def peek(self) -> str:
-#     starti = i
-#     out = self.token()
-#     i = starti
-#     return out
-# 
-#   def parseError(self, msg): raise ParseError(self.line, msg)
-#   def sugar(self, s):
-#     if self.token() != s.encode('utf-8'): self.parseError(f"Expected |{s}|")
-# 
-#   def parseTy(self) -> Ty:
-#     name = self.token()
-#     # TODO: handle [ ... ] cases
-#     return self.env.tys[name]
-# 
-#   def parseField(self) -> StructField:
-#     name = self.token(); self.sugar(':')
-#     # TODO: handle zid case
-#     ty = self.parseTy()
-#     return (name, StructField(ty=ty))
-# 
-#   def parseStruct(self) -> StructBase:
-#     name = self.token();
-#     fields = []
-#     self.sugar('[')
-#     while self.peek() != ']':
-#       fields.append(self.parseField())
-#       self.sugar(';')
-#     self.sugar(']')
-#     return self.env.struct(self.mod, name, fields)
-# 
-#   def parseFile(self):
-#     while i < len(buf):
-# 
+@dataclass
+class Parser:
+  buf: bytearray
+  env: TyEnv = dataclasses.field(default_factory=TyEnv)
+  mod: bytes = None
+  i: int = 0
+  line: int = 1
+
+  def error(self, msg): raise ParseError(self.line, msg)
+
+  def skipWhitespace(self):
+    while TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
+      self.i += 1
+
+  def token(self) -> bytes:
+    self.skipWhitespace()
+    starti = self.i
+    group = coaleseTG(TG.fromChr(self.buf[self.i]))
+    self.i += 1
+    if group is TG.T_SINGLE:
+      return self.buf[starti:self.i]
+    while self.i < len(self.buf):
+      if coaleseTG(TG.fromChr(self.buf[self.i])) is not group:
+        return self.buf[starti:self.i]
+      self.i += 1
+    return self.buf[starti: self.i]
+
+  def peek(self) -> bytes:
+    starti = self.i
+    out = self.token()
+    self.i = starti
+    return out
+
+  def need(self, s):
+    if self.token() != s.encode('utf-8'): self.error(f"Expected |{s}|")
+
+  def sugar(self, s):
+    if self.peek() == s.encode('utf-8'): self.token() # consume token
+
+  def parseTy(self) -> Any:
+    name = self.token()
+    # TODO: handle [ ... ] cases
+    return self.env.tys[name]
+
+  def parseField(self) -> StructField:
+    name = self.token(); self.need(':')
+    # TODO: handle zid case
+    ty = self.parseTy()
+    print("??? parsed field:", name)
+    return (name, StructField(ty=ty))
+
+  def parseStruct(self) -> StructBase:
+    name = self.token();
+    fields = []
+    self.need('[')
+    while True:
+      p = self.peek()
+      print("??? peek:", p)
+      if p == b']':
+        self.need(']')
+        break
+      fields.append(self.parseField())
+      self.sugar(';')
+    print('??? parse Struct done:', self.mod, name, fields)
+    return self.env.struct(self.mod, name, fields)
+
+  def parse(self):
+    while self.i < len(self.buf):
+      token = self.token()
+      print('??? Got token:', token)
+      if not token: break
+      if token == b'struct': self.parseStruct()

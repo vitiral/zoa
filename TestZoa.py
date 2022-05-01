@@ -63,10 +63,11 @@ class TestZoaRaw(unittest.TestCase):
     assert_roundtrip(a)
 
 
-class TestZoaTy(unittest.TestCase):
+class TestBase(unittest.TestCase):
   def setUp(self):
     self.env = TyEnv()
 
+class TestZoaTy(TestBase):
   def test_int(self):
     assert b'\x42' == Int(0x42).toZ().data
     assert 0x42 == Int.frZ(ZoaRaw.new_data(b'\x42'))
@@ -118,6 +119,63 @@ class TestZoaTy(unittest.TestCase):
     assert True == bm.isA()
     assert False == bm.isB()
     assert True == bm.isTop()
+
+def tokens(buf):
+  out, p = [], Parser(buf)
+  while p.i < len(buf):
+    t = p.token()
+    if not t: break
+    out.append(t.decode('utf-8'))
+  return out
+
+class TestParse(TestBase):
+  def test_TG(self):
+    assert TG.fromChr(ord(' ')) is TG.T_WHITE
+    assert TG.fromChr(ord('\n')) is TG.T_WHITE
+    assert TG.fromChr(ord('f')) is TG.T_HEX
+    assert TG.fromChr(ord('g')) is TG.T_ALPHA
+    assert TG.fromChr(ord('_')) is TG.T_ALPHA
+    assert TG.fromChr(ord('.')) is TG.T_SINGLE
+
+  def test_skipWhitespace(self):
+    p = Parser(b'   \nfoo')
+    assert p.i == 0
+    p.skipWhitespace(); assert p.i == 4
+    p.skipWhitespace(); assert p.i == 4
+
+  def test_single(self):
+    assert b']' == Parser(b']').token()
+    assert b')' == Parser(b')').token()
+    assert b'a' == Parser(b'a').token()
+
+  def test_tokens(self):
+    assert tokens(b'a_b[foo.bar baz]') == [
+      'a_b', '[', 'foo', '.', 'bar', 'baz', ']']
+
+  def test_struct(self):
+    p = Parser(b'struct foo [a: Int]')
+    p.parse()
+    foo = p.env.tys[b'foo']
+    assert foo._fields == [(b'a', StructField(Int))]
+
+    p = Parser(b'struct ab [a: Int; b: Bytes]')
+    p.parse()
+    ab = p.env.tys[b'ab']
+    assert ab._fields == [
+      (b'a', StructField(Int)),
+      (b'b', StructField(Bytes)),
+    ]
+
+  def test_struct_inner(self):
+    p = Parser(b'struct Foo [a: Int]\nstruct Bar[a: Int; f: Foo]')
+    p.parse()
+    Foo = p.env.tys[b'Foo']
+    Bar = p.env.tys[b'Bar']
+    assert Bar._fields == [
+      (b'a', StructField(Int)),
+      (b'f', StructField(Foo)),
+    ]
+
 
 if __name__ == '__main__':
   unittest.main()
