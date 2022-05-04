@@ -317,7 +317,8 @@ class TyEnv:
 
   def bitmap(self, mod: bytes, name: bytes, variants: List[Tuple[bytes, BmVar]]):
     mn = modname(mod, name)
-    methods = {'name': mn}
+    if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
+    methods = {'name': mn, '_variants': variants}
     for n, var in variants:
       n = n.decode('utf-8')
       methods['get_' + n] = var._getVariantClosure()
@@ -373,7 +374,7 @@ class Parser:
     while TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
       self.i += 1
 
-  def token(self) -> bytes:
+  def _token(self) -> bytes:
     self.skipWhitespace()
     starti = self.i
     group = coaleseTG(TG.fromChr(self.buf[self.i]))
@@ -385,6 +386,31 @@ class Parser:
         return self.buf[starti:self.i]
       self.i += 1
     return self.buf[starti: self.i]
+
+  def _blockComment(self):
+    while self.i < len(self.buf):
+      if self.buf[self.i:self.i+1] == b'\\(':
+        self.i += 2
+        self._blockComment()
+      if self.buf[self.i] == ord(')'):
+        return
+      self.i += 1
+
+  def parseComment(self):
+    if self.buf[self.i] == ord('('): # block comment
+      self.i += 1
+      self._blockComment()
+    elif self.buf[self.i] == ord(' '): # comment till EOL
+      while self.i < len(self.buf) and self.buf[self.i] != ord('\n'):
+        self.i += 1
+    else: # ignore token
+      self._token()
+
+  def token(self):
+    while self.i < len(self.buf):
+      t = self._token()
+      if t == b'\\': self.parseComment()
+      else: return t
 
   def peek(self) -> bytes:
     starti = self.i
@@ -415,7 +441,7 @@ class Parser:
     return (name, StructField(ty=ty))
 
   def _parseStruct(self) -> (str, List[StructField]):
-    name = self.token();
+    name = self.token()
     fields = []
     self.need('[')
     while True:
@@ -427,6 +453,12 @@ class Parser:
       self.sugar(';')
     return name, fields
 
+  def parseInt(self) -> int:
+    t = self.token()
+    if t.startswith(b'0b'): return int(t[2:], 2)
+    if t.startswith(b'0x'): return int(t[2:], 16)
+    return int(t, 10)
+
   def parseStruct(self) -> StructBase:
     name, fields = self._parseStruct()
     return self.env.struct(self.mod, name, fields)
@@ -437,7 +469,25 @@ class Parser:
     return self.env.enum(self.mod, name, [(n, f.ty) for (n, f) in fields])
 
   def parseBitmap(self) -> BitmapBase:
-    raise 'foo'
+    name = self.token()
+    variants = []
+    self.need('[')
+    while True:
+      p = self.peek()
+      if p == b']':
+        self.need(']')
+        break
+      vname = self.token()
+      var = self.parseInt()
+      i = self.i
+      # If next token is int, it is the msk
+      try: msk = self.parseInt()
+      except ValueError: # else, make it like a peek
+        self.i = i
+        msk = var
+      self.sugar(';')
+      variants.append((vname, BmVar(var, msk)))
+    return self.env.bitmap(self.mod, name, variants)
 
   def parse(self):
     while self.i < len(self.buf):
@@ -445,4 +495,4 @@ class Parser:
       if not token: break
       if token == b'struct': self.parseStruct()
       if token == b'enum': self.parseEnum()
-      if token == b'bitmap': self.parseBitMap()
+      if token == b'bitmap': self.parseBitmap()

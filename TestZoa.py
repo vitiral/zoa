@@ -158,6 +158,9 @@ class TestParse(TestBase):
     p.skipWhitespace(); assert p.i == 4
     p.skipWhitespace(); assert p.i == 4
 
+  def test_comment(self):
+    Parser(b'\\ hi there\n \\hi \\there\n \\(hi there) \\bob').parse()
+
   def test_single(self):
     assert b']' == Parser(b']').token()
     assert b')' == Parser(b')').token()
@@ -192,13 +195,24 @@ class TestParse(TestBase):
     ]
 
   def test_enum(self):
-    p = Parser(b'enum E [a: Int; b: Bytes]')
+    p = Parser(b'enum E \\comment [a: Int; b: Bytes]')
     p.parse()
     E = p.env.tys[b'E']
     assert E._variants == [
       (b'a', Int),
       (b'b', Bytes),
     ]
+
+  def test_bitmap(self):
+    p = Parser(b'bitmap B [a 0x01 0x03; b 0x02 0x07]')
+    p.parse()
+    B = p.env.tys[b'B']
+    assert B._variants == [
+      (b'a', BmVar(1, 3)),
+      (b'b', BmVar(2, 7)),
+    ]
+
+
 
 if __name__ == '__main__':
   unittest.main()
