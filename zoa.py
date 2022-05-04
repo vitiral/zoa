@@ -210,25 +210,53 @@ class StructBase:
     posArgs = 0; posArgsDone = False
     for name, f in self._fields:
       if f.zid is None: # positional arg
-        if getattr(self, name) is None: posArgsDone = True
+        if getattr(self, name.decode('utf-8')) is None: posArgsDone = True
         elif posArgsDone: raise ValueError(
           f"{name} has value after previous positional arg wasn't specified")
         else: posArgs += 1
 
     out = [Int(posArgs).toZ()] # starts with number of positional arguments
     for name, f in self._fields:
-      if f.zid is None: out.append(getattr(self, name).toZ())
+      if f.zid is None: out.append(getattr(self, name.decode('utf-8')).toZ())
       else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
     return ZoaRaw.new_arr(out)
+
+@dataclass(init=False)
+class EnumBase:
+  @classmethod
+  def frZ(cls, z: ZoaRaw) -> 'EnumBase':
+    variant = Int.frZ(z.arr[0])
+    name, ty = self._variants[variant]
+    return cls(**{name.decode('utf-8'): ty})
+
+  def toZ(self) -> ZoaRaw:
+    variant, value = None, None
+    for i, (n, ty) in enumerate(self._variants):
+      v = getattr(self, n.decode('utf-8'))
+      if v:
+        if variant is not None: raise ValueError(
+          f"Multiple variants set: {self._variants[variant]} and {(n, ty)}")
+        variant, value = i, v
+    if variant is None: raise ValueError("No variant set")
+    return ZoaRaw.new_arr([Int(variant).toZ(), value.toZ()])
 
 @dataclass
 class BmVar: # Bitmap Variant
   var: int  # the value for this variant, i.e. 0b10
   msk: int  # the mask for this variant,  i.e. 0b11
 
-  def _setVariantClosure(varSelf):
+  def _getVariantClosure(varSelf):
     def closure(bitmapSelf):
-      bitmapSelf.value = ((~varSelf.msk) & bitmapSelf.value) | varSelf.var
+      return varSelf.msk & bitmapSelf.value
+    return closure
+
+  def _setVariantClosure(varSelf):
+    def closure(bitmapSelf, var=None):
+      if var is None: var = varSelf.var
+      if var != 0 and var != varSelf.msk & var:
+        raise ValueError(
+          f'Attempt to set invalid. var={hex(var)} msk={hex(varSelf.msk)}')
+      bitmapSelf.value = ((~varSelf.msk) & bitmapSelf.value) | var
     return closure
 
   def _isVariantClosure(varSelf):
@@ -269,22 +297,37 @@ class TyEnv:
     ty.name = mn
     ty._fields = fields
     self.tys[mn] = ty
-    print("??? struct:", ty)
-    print("??? tys:", self.tys)
+    return ty
+
+  def enum(self, mod: bytes, name: bytes, variants: List[Tuple[bytes, Any]]):
+    mn = modname(mod, name)
+    if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
+    ty = dataclasses.make_dataclass(
+      name.decode('utf-8'),
+      [
+        (n.decode('utf-8'), ty, dataclasses.field(default=None))
+        for (n, ty) in variants
+      ],
+      bases=(EnumBase,),
+    )
+    ty.name = mn
+    ty._variants = variants
+    self.tys[mn] = ty
     return ty
 
   def bitmap(self, mod: bytes, name: bytes, variants: List[Tuple[bytes, BmVar]]):
     mn = modname(mod, name)
     methods = {'name': mn}
     for n, var in variants:
-      n = n[0].upper() + (n[1:] if len(n) > 1 else '') # capitalize first letter
-      methods['is' + n] = var._isVariantClosure()
-      methods['set' + n] = var._setVariantClosure()
-    ty = type(name, (BitmapBase,), methods)
+      n = n.decode('utf-8')
+      methods['get_' + n] = var._getVariantClosure()
+      methods['set_' + n] = var._setVariantClosure()
+      methods['is_' + n] = var._isVariantClosure()
+    ty = type(name.decode('utf-8'), (BitmapBase,), methods)
     self.tys[mn] = ty
     return ty
 
-SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '.', '(', ')']}
+SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '(', ')']}
 
 class TG(Enum): # Token Group
   T_NUM = 0
@@ -298,11 +341,12 @@ class TG(Enum): # Token Group
   def fromChr(cls, c: int):
     if(c <= ord(' ')):                  return cls.T_WHITE;
     if(ord('0') <= c and c <= ord('9')): return cls.T_NUM;
+    if(ord('_') == c)                  : return cls.T_NUM;
     if(ord('a') <= c and c <= ord('f')): return cls.T_HEX;
     if(ord('A') <= c and c <= ord('F')): return cls.T_HEX;
     if(ord('g') <= c and c <= ord('z')): return cls.T_ALPHA;
     if(ord('G') <= c and c <= ord('Z')): return cls.T_ALPHA;
-    if(ord('_') == c)                  : return cls.T_ALPHA;
+    if(ord('.') == c)                  : return cls.T_ALPHA;
     if(c in SINGLES)                   : return cls.T_SINGLE;
     return cls.T_SYMBOL
 
@@ -354,36 +398,51 @@ class Parser:
   def sugar(self, s):
     if self.peek() == s.encode('utf-8'): self.token() # consume token
 
+  def parseArr(self) -> ArrBase:
+    self.need('['); ty = self.parseTy(); self.need(']')
+    return self.env.arr(ty)
+
   def parseTy(self) -> Any:
     name = self.token()
-    # TODO: handle [ ... ] cases
+    if name == 'Arr':
+      return self.parseArr()
     return self.env.tys[name]
 
   def parseField(self) -> StructField:
     name = self.token(); self.need(':')
     # TODO: handle zid case
     ty = self.parseTy()
-    print("??? parsed field:", name)
     return (name, StructField(ty=ty))
 
-  def parseStruct(self) -> StructBase:
+  def _parseStruct(self) -> (str, List[StructField]):
     name = self.token();
     fields = []
     self.need('[')
     while True:
       p = self.peek()
-      print("??? peek:", p)
       if p == b']':
         self.need(']')
         break
       fields.append(self.parseField())
       self.sugar(';')
-    print('??? parse Struct done:', self.mod, name, fields)
+    return name, fields
+
+  def parseStruct(self) -> StructBase:
+    name, fields = self._parseStruct()
     return self.env.struct(self.mod, name, fields)
+
+  def parseEnum(self) -> EnumBase:
+    name, fields = self._parseStruct()
+    # TODO: handle zid
+    return self.env.enum(self.mod, name, [(n, f.ty) for (n, f) in fields])
+
+  def parseBitmap(self) -> BitmapBase:
+    raise 'foo'
 
   def parse(self):
     while self.i < len(self.buf):
       token = self.token()
-      print('??? Got token:', token)
       if not token: break
       if token == b'struct': self.parseStruct()
+      if token == b'enum': self.parseEnum()
+      if token == b'bitmap': self.parseBitMap()

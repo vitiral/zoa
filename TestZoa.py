@@ -62,7 +62,6 @@ class TestZoaRaw(unittest.TestCase):
     a = [ b'one', b'two', b'three', b'four', b'five' ] * 30 # 150
     assert_roundtrip(a)
 
-
 class TestBase(unittest.TestCase):
   def setUp(self):
     self.env = TyEnv()
@@ -91,8 +90,8 @@ class TestZoaTy(TestBase):
     assert b == Bytes.frZ(ZoaRaw.new_data(b'abc 123'))
 
   def test_struct(self):
-    ty = self.env.struct(None, 'foo', [
-        ('a', StructField(Int)),
+    ty = self.env.struct(None, b'foo', [
+        (b'a', StructField(Int)),
     ])
     z = ZoaRaw.new_arr([
         Int(1).toZ(),  # numPositional
@@ -102,23 +101,39 @@ class TestZoaTy(TestBase):
     assert s.a == 0x77
     assert z == s.toZ()
 
-  def test_bitmap(self):
-    ty = self.env.bitmap(None, 'bm', [
-        ('a',     BmVar(0x01, 0x03)),
-        ('b',     BmVar(0x03, 0x03)),
-        ('noTop', BmVar(0x00, 0x10)),
-        ('top',   BmVar(0x10, 0x10)),
+  def test_enum(self):
+    ty = self.env.enum(None, b'en', [
+        (b'a',     Int),
+        (b'b',     Bytes),
     ])
-    bm = ty();      assert 0 == bm.value
-    bm.setTop();    assert 0x10 == bm.value
-    bm.setNoTop();  assert 0x00 == bm.value
-    bm.setA();      assert 0x01 == bm.value
-    bm.setB();      assert 0x03 == bm.value
-    bm.setA();      assert 0x01 == bm.value
-    bm.setTop();    assert 0x11 == bm.value
-    assert True == bm.isA()
-    assert False == bm.isB()
-    assert True == bm.isTop()
+    en = ty(a=Int(3))
+    assert en.b is None;    assert 3 == en.a
+    assert en.toZ() == ZoaRaw.new_arr([Int(0).toZ(), Int(3).toZ()])
+    en = ty(b=Bytes(b'hi there enum'))
+    assert en.a is None;     assert en.b == b'hi there enum'
+    assert en.toZ() == ZoaRaw.new_arr([
+      Int(1).toZ(), Bytes(b'hi there enum').toZ()])
+
+  def test_bitmap(self):
+    ty = self.env.bitmap(None, b'bm', [
+        (b'a',     BmVar(0x01, 0x03)),
+        (b'b',     BmVar(0x03, 0x03)),
+        (b'noTop', BmVar(0x00, 0x10)),
+        (b'top',   BmVar(0x10, 0x10)),
+    ])
+    bm = ty();       assert 0 == bm.value
+    bm.set_top();    assert 0x10 == bm.value
+    bm.set_noTop();  assert 0x00 == bm.value
+    bm.set_a();      assert 0x01 == bm.value
+    assert 0x01 == bm.get_a()
+    bm.set_b();      assert 0x03 == bm.value
+    assert 0x03 == bm.get_a()
+    bm.set_a();      assert 0x01 == bm.value
+    bm.set_top();    assert 0x11 == bm.value
+    assert  bm.is_a()
+    assert not bm.is_b()
+    assert bm.is_top()
+    bm.set_a(0x03);  assert bm.is_b()
 
 def tokens(buf):
   out, p = [], Parser(buf)
@@ -132,10 +147,10 @@ class TestParse(TestBase):
   def test_TG(self):
     assert TG.fromChr(ord(' ')) is TG.T_WHITE
     assert TG.fromChr(ord('\n')) is TG.T_WHITE
+    assert TG.fromChr(ord('_')) is TG.T_NUM
     assert TG.fromChr(ord('f')) is TG.T_HEX
     assert TG.fromChr(ord('g')) is TG.T_ALPHA
-    assert TG.fromChr(ord('_')) is TG.T_ALPHA
-    assert TG.fromChr(ord('.')) is TG.T_SINGLE
+    assert TG.fromChr(ord('.')) is TG.T_ALPHA
 
   def test_skipWhitespace(self):
     p = Parser(b'   \nfoo')
@@ -150,7 +165,7 @@ class TestParse(TestBase):
 
   def test_tokens(self):
     assert tokens(b'a_b[foo.bar baz]') == [
-      'a_b', '[', 'foo', '.', 'bar', 'baz', ']']
+      'a_b', '[', 'foo.bar', 'baz', ']']
 
   def test_struct(self):
     p = Parser(b'struct foo [a: Int]')
@@ -176,6 +191,14 @@ class TestParse(TestBase):
       (b'f', StructField(Foo)),
     ]
 
+  def test_enum(self):
+    p = Parser(b'enum E [a: Int; b: Bytes]')
+    p.parse()
+    E = p.env.tys[b'E']
+    assert E._variants == [
+      (b'a', Int),
+      (b'b', Bytes),
+    ]
 
 if __name__ == '__main__':
   unittest.main()
