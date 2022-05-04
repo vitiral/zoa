@@ -328,7 +328,7 @@ class TyEnv:
     self.tys[mn] = ty
     return ty
 
-SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '(', ')']}
+SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '(', ')', '[', ']']}
 
 class TG(Enum): # Token Group
   T_NUM = 0
@@ -370,12 +370,17 @@ class Parser:
 
   def error(self, msg): raise ParseError(self.line, msg)
 
+  def trackLine(self):
+      if self.buf[self.i] == ord('\n'): self.line += 1
+
   def skipWhitespace(self):
-    while TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
+    while self.i < len(self.buf) and TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
+      self.trackLine()
       self.i += 1
 
   def _token(self) -> bytes:
     self.skipWhitespace()
+    if self.i == len(self.buf): return
     starti = self.i
     group = coaleseTG(TG.fromChr(self.buf[self.i]))
     self.i += 1
@@ -430,7 +435,7 @@ class Parser:
 
   def parseTy(self) -> Any:
     name = self.token()
-    if name == 'Arr':
+    if name == b'Arr':
       return self.parseArr()
     return self.env.tys[name]
 
