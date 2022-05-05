@@ -264,9 +264,13 @@ class BmVar: # Bitmap Variant
       return varSelf.msk & bitmapSelf.value == varSelf.var
     return closure
 
-@dataclass(init=False)
+@dataclass
 class BitmapBase:
   value: int = 0
+
+  @classmethod
+  def frZ(cls, z: ZoaRaw) -> 'BitmapBase': return cls(int(Int.frZ(z)))
+  def toZ(self) -> ZoaRaw: return Int(self.value).toZ()
 
 def modname(mod, name): return mod + '.' + name if mod else name
 

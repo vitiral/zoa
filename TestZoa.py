@@ -134,7 +134,9 @@ class TestZoaTy(TestBase):
     assert  bm.is_a()
     assert not bm.is_b()
     assert bm.is_top()
-    bm.set_a(0x03);  assert bm.is_b()
+    bm.set_a(0x03);  assert bm.is_b();  assert 0x13 == bm.value
+    assert bm.toZ() == ZoaRaw.new_data(b'\x13')
+    assert bm.frZ(bm.toZ()) == bm
 
 def tokens(buf):
   out, p = [], Parser(buf)
