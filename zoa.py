@@ -226,8 +226,8 @@ class EnumBase:
   @classmethod
   def frZ(cls, z: ZoaRaw) -> 'EnumBase':
     variant = Int.frZ(z.arr[0])
-    name, ty = self._variants[variant]
-    return cls(**{name.decode('utf-8'): ty})
+    name, ty = cls._variants[variant]
+    return cls(**{name.decode('utf-8'): ty.frZ(z.arr[1])})
 
   def toZ(self) -> ZoaRaw:
     variant, value = None, None

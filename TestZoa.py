@@ -113,6 +113,7 @@ class TestZoaTy(TestBase):
     assert en.a is None;     assert en.b == b'hi there enum'
     assert en.toZ() == ZoaRaw.new_arr([
       Int(1).toZ(), Bytes(b'hi there enum').toZ()])
+    assert ty.frZ(en.toZ()) == en
 
   def test_bitmap(self):
     ty = self.env.bitmap(None, b'bm', [
@@ -176,13 +177,16 @@ class TestParse(TestBase):
     foo = p.env.tys[b'foo']
     assert foo._fields == [(b'a', StructField(Int))]
 
-    p = Parser(b'struct ab [a: Int; b: Bytes]')
+    p = Parser(b'struct Ab [a: Int; b: Bytes]')
     p.parse()
-    ab = p.env.tys[b'ab']
-    assert ab._fields == [
+    Ab = p.env.tys[b'Ab']
+    assert Ab._fields == [
       (b'a', StructField(Int)),
       (b'b', StructField(Bytes)),
     ]
+    ab = Ab(a = 1, b = b'hi')
+    assert ab.a == 1
+    assert ab.b == b'hi'
 
   def test_struct_inner(self):
     p = Parser(b'struct Foo [a: Int]\nstruct Bar[a: Int; f: Foo]')
@@ -211,8 +215,6 @@ class TestParse(TestBase):
       (b'a', BmVar(1, 3)),
       (b'b', BmVar(2, 7)),
     ]
-
-
 
 if __name__ == '__main__':
   unittest.main()
