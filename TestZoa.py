@@ -1,18 +1,12 @@
 import io
 import unittest
-from pprint import pprint as pp
 from zoa import *
 
 def assert_roundtrip(v):
-  zoa = ZoaRaw.from_bytes(v)
+  zoa = ZoaRaw.frPy(v)
   b = zoa.serialize()
   result_zoa = from_zoab(b)
-  pp(result_zoa.arr)
-  print()
   result = result_zoa.to_py()
-  pp(v)
-  pp(result)
-  print(f'len: {len(v)} == {len(result)}')
   assert v == result
 
 class TestZoaRaw(unittest.TestCase):
@@ -29,7 +23,6 @@ class TestZoaRaw(unittest.TestCase):
     assert v[0].data == b'hi'
     write_arr(bw, v)
     b = bw.getvalue()
-    print(b)
     assert b[0] == ZOA_ARR | 1
     assert b[1] == 2 # the string
     assert b[2:] == b'hi'
@@ -45,12 +38,11 @@ class TestZoaRaw(unittest.TestCase):
     assert_roundtrip([b'hi', [] ])
     assert_roundtrip([b'hi', [b'bob']])
 
-  def test_long_bytes(self):
+  def test_long_data(self):
     bw = io.BytesIO()
     b = b'0123456789' * 13 # length = 130 (63 + 63 + 4
     write_data(bw, b)
     r = bw.getvalue()
-    print(f"\n{hex(r[0])} == {hex(ZOA_DATA | ZOA_JOIN | 63)}\n")
     assert r[0] == ZOA_DATA | ZOA_JOIN | 63
     assert r[1:64] == b[0:63]
     assert r[64] == ZOA_DATA | ZOA_JOIN | 63
@@ -84,10 +76,10 @@ class TestZoaTy(TestBase):
     assert b'\x09' == z.arr[9].data
     assert ai == ArrInt.frZ(z)
 
-  def test_bytes(self):
-    b = Bytes(b'abc 123')
+  def test_data(self):
+    b = Data(b'abc 123')
     assert b'abc 123' == b.toZ().data
-    assert b == Bytes.frZ(ZoaRaw.new_data(b'abc 123'))
+    assert b == Data.frZ(ZoaRaw.new_data(b'abc 123'))
 
   def test_struct(self):
     ty = self.env.struct(None, b'foo', [
@@ -104,15 +96,15 @@ class TestZoaTy(TestBase):
   def test_enum(self):
     ty = self.env.enum(None, b'en', [
         (b'a',     Int),
-        (b'b',     Bytes),
+        (b'b',     Data),
     ])
     en = ty(a=Int(3))
     assert en.b is None;    assert 3 == en.a
     assert en.toZ() == ZoaRaw.new_arr([Int(0).toZ(), Int(3).toZ()])
-    en = ty(b=Bytes(b'hi there enum'))
+    en = ty(b=Data(b'hi there enum'))
     assert en.a is None;     assert en.b == b'hi there enum'
     assert en.toZ() == ZoaRaw.new_arr([
-      Int(1).toZ(), Bytes(b'hi there enum').toZ()])
+      Int(1).toZ(), Data(b'hi there enum').toZ()])
     assert ty.frZ(en.toZ()) == en
 
   def test_bitmap(self):
@@ -146,6 +138,11 @@ class TestZoaTy(TestBase):
     assert i.value == 4
     assert i.frZ(i.toZ()) == i
 
+  def test_dynArr(self):
+    a = Dyn.frPyArrInt([1, 2, 3, 4])
+    assert a.value == [1, 2, 3, 4]
+    assert a.frZ(a.toZ()) == a
+
 def tokens(buf):
   out, p = [], Parser(buf)
   while p.i < len(buf):
@@ -162,6 +159,15 @@ class TestParse(TestBase):
     assert TG.fromChr(ord('f')) is TG.T_HEX
     assert TG.fromChr(ord('g')) is TG.T_ALPHA
     assert TG.fromChr(ord('.')) is TG.T_ALPHA
+
+  def test_data(self):
+    b = Data(b'hi there bob!')
+    expected = '  68 6920 7468 6572 6520 626F 6221'
+    result = repr(b)
+    assert expected == result
+
+    b = Data(b'\x10\x12')
+    assert '1012' == repr(b)
 
   def test_skipWhitespace(self):
     p = Parser(b'   \nfoo')
@@ -187,12 +193,12 @@ class TestParse(TestBase):
     foo = p.env.tys[b'foo']
     assert foo._fields == [(b'a', StructField(Int))]
 
-    p = Parser(b'struct Ab [a: Int; b: Bytes]')
+    p = Parser(b'struct Ab [a: Int; b: Data]')
     p.parse()
     Ab = p.env.tys[b'Ab']
     assert Ab._fields == [
       (b'a', StructField(Int)),
-      (b'b', StructField(Bytes)),
+      (b'b', StructField(Data)),
     ]
     ab = Ab(a = 1, b = b'hi')
     assert ab.a == 1
@@ -209,12 +215,12 @@ class TestParse(TestBase):
     ]
 
   def test_enum(self):
-    p = Parser(b'enum E \\comment [a: Int; b: Bytes]')
+    p = Parser(b'enum E \\comment [a: Int; b: Data]')
     p.parse()
     E = p.env.tys[b'E']
     assert E._variants == [
       (b'a', Int),
-      (b'b', Bytes),
+      (b'b', Data),
     ]
 
   def test_bitmap(self):

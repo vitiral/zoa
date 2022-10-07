@@ -12,7 +12,7 @@ aware protozoa are not fungi, but the name was too good.|
 
 zoa encompases the following technologies:|
 |lu{
-  #zoab# |`.zoa`: a structured data composed of only bytes and array.|
+  #zoab# |`.zoa`: a structured data composed of only data and array.|
   #zoat# |`.zoa`: an extensible text format for representing zoab in a human readable
     way. Zoat intentionally has little functionality on it's own but allows
     extensibility and a standardized syntax for the different tools built on top
@@ -46,7 +46,7 @@ embedded system.|
 {**************
 *} |h2 zoat
 
-zoat (like zoab) has only two data types: bytes and array. Bytes start at the
+zoat (like zoab) has only two data types: data and array. Data start at the
 first non-whitespace character (except for '|' or '{', which we will get to) and
 continue until a pipe. For example:
 |===
@@ -106,7 +106,7 @@ following either a pipe or curly brace:|
               the pain of not being able to use trailing commas, this avoids
               that pain.
 
-  | <bytes>   A set of bytes until the next '|', '{' or '}'. There _must_ be
+  | <data>    A set of data until the next '|', '{' or '}'. There _must_ be
               whitespace (newline, tab or space) after | otherwise the character
               will be treated as a command. Whitespace will be ignored until the
               first non-whitespace character.
@@ -224,7 +224,7 @@ make a |&bare reference|. All of these happen inline.|
 *} |h2 zoab: structured array and byte data.
 
 The binary representation of zoa is called zoab. Like zoat it is composed of
-only two types: bytes an array. Both can only have sections of length 63, but a
+only two types: data and array. Both can only have sections of length 63, but a
 join bit may be used to make longer values.|
 
 The start of a zoab item has a single byte which specifies it's type, join
@@ -238,8 +238,8 @@ status and length. it looks like:|
   J: can be 1, which will cause it to be "joined" to the next item (which must
     be the same type). This allows the true length to be longer than 63 (any
     length is possible with multiple joins).|
-  T: can be 0 for "bytes" or 1 for "array"|
-  L: contains a length (0-63) of the bytes or array|
+  T: can be 0 for "data" or 1 for "array"|
+  L: contains a length (0-63) of the data or array|
 }
 
 {**************
@@ -271,7 +271,7 @@ data to already be deserialzed.|
   3: log event, used for zoa's own core logging.
 }
 
-We also reserve J=1 T=1 L=0 to mean that the next bytes value is actually a
+We also reserve J=1 T=1 L=0 to mean that the next data value is actually a
 pointer to more data. This allows fngi (or other languages) to use a maximum
 block size of 4kB while still permitting arbitrary length zoab data.|
 
@@ -302,7 +302,7 @@ arguments are required.
 struct Foo [
   a: Int; \ positional required argument.
   b: Int = 0; \ positional argument with default.
-  c: Data = ||; \ bytes argument with default.
+  c: Data = ||; \ data argument with default.
   d:0 Int = 0; \ indexed argument with default.
   d:1 Arr[Int] = 0;
 ]
@@ -354,16 +354,15 @@ for the payoff. 95%+ of such cases can be solved with the following.
 
 |==
 enum Dyn {
-  dynStr: Data,           \ 1 render utf-8
+  dynStr:  Str,           \ 1 render utf-8
   dynData: Data,          \ 2 render hex bytes (big-endian)
-  dynInt: Int,            \ 3 render decimal
-  dynNum: Num,            \ 4 render float
-  dynTime: Time           \ 5 render timestamp
-  dynDuration: Num        \ 6 render duration (seconds)
-  dynPath: Path           \ 7 render /unix/path
+  dynInt:  Int,           \ 3 render decimal
+  dynNum:  Num,           \ 4 render float
+  dynPath: Path           \ 5 render /unix/path
+  dynTime: Time           \ 6 render timestamp
+  dynDuration: Num        \ 7 render duration (seconds)
 
   dynArrDyn: Arr[Dyn]     \ 0x20
-  dynArrInt: Arr[Int]     \ 0x21
   dynArr[native]          \ 0x20 + native (i.e. 0x24 for Num)
 
   dynIntMap: IntMap[Dyn]  \ 0x40

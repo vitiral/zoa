@@ -21,11 +21,11 @@ class ZoaRaw(object):
   arr: list["ZoaRaw"]
 
   @classmethod
-  def from_bytes(cls, value):
+  def frPy(cls, value):
     if isbytes(value): return cls.new_data(value)
     out = []
     for v in value:
-      out.append(ZoaRaw.from_bytes(v))
+      out.append(ZoaRaw.frPy(v))
     return cls.new_arr(out)
 
   def to_py(self):
@@ -165,16 +165,27 @@ class Int(int):
     if self >= 0: return z
     return ZoaRaw.new_arr([z])
 
-class Bytes(bytes):
-  name = 'Bytes'
+class Data(bytes):
+  name = 'Data'
 
   @classmethod
   def frPy(cls, *args, **kwargs): return cls(*args, **kwargs)
   @classmethod
-  def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
+  def frZ(cls, raw: ZoaRaw) -> "Data": return cls(raw.data)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
 
-class Str(bytes):
+  def __repr__(self):
+    out = bytearray()
+    if len(self) % 2 != 0: out.extend(b'  '); e = 2
+    else:                                     e = 0
+
+    for i, b in enumerate(self):
+      out.extend(b'%.2X' % b)
+      if e == 2 and i != len(self) - 1: out.extend(b' '); e = 1
+      else:                                               e += 1
+    return out.decode('utf-8')
+
+class Str(str):
   name = 'Str'
 
   @classmethod
@@ -197,7 +208,7 @@ class ArrBase(list):
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
 
 ArrStr   = type('ArrStr', (ArrBase,),   {'_ty': Str,   'name': 'ArrStr'})
-ArrBytes = type('ArrBytes', (ArrBase,), {'_ty': Bytes, 'name': 'ArrBytes'})
+ArrData = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
 ArrInt   = type('ArrInt', (ArrBase,),   {'_ty': Int,   'name': 'ArrInt'})
 
 @dataclass(init=False)
@@ -287,26 +298,24 @@ class BitmapBase:
 
 
 class DynType(Enum):
-  Unknown = 0
-  Str = 1
-  Bytes = 2
-  Int = 3
-  Num = 4
-  Time = 5
-  Duration = 6
-  Path = 7
+  Dyn   = 0
+  Str   = 1
+  Data  = 2
+  Int   = 3
+  Num   = 4
+  Path  = 5
 
-  ArrDyn = 0x20
-  ArrStr = 0x21
-  ArrBytes = 0x22
-  ArrInt = 0x23
+  ArrDyn   = 0x20
+  ArrStr   = 0x21
+  ArrData = 0x22
+  ArrInt   = 0x23
 
 dynFrZMethod = {
-  DynType.Str: lambda r: r.data.decode('utf-8'),
-  DynType.Bytes: lambda r: r.data,
+  DynType.Str: Str.frZ,
+  DynType.Data: Data.frZ,
   DynType.Int: Int.frZ,
   DynType.ArrStr: ArrStr.frZ,
-  DynType.ArrBytes: ArrBytes.frZ,
+  DynType.ArrData: ArrData.frZ,
   DynType.ArrInt: ArrInt.frZ,
 }
 
@@ -319,7 +328,7 @@ class Dyn:
   @classmethod
   def _str(cls, v): return cls(value=v, ty=DynType.Str)
   @classmethod
-  def _data(cls, v): return cls(value=v, ty=DynType.Bytes)
+  def _data(cls, v): return cls(value=v, ty=DynType.Data)
   @classmethod
   def _int(cls, v): return cls(value=v, ty=DynType.Int)
   @classmethod
@@ -328,11 +337,11 @@ class Dyn:
   @classmethod
   def frPy(cls, arg):
     if(isinstance(arg, str)): return cls._str(Str(arg))
-    if(isinstance(arg, bytes)): return cls._data(Bytes(arg))
+    if(isinstance(arg, bytes)): return cls._data(Data(arg))
     if(isinstance(arg, int)): return cls._int(Int(arg))
     raise TypeError(arg)
   @classmethod
-  def arrIntFrPy(cls, arr): return cls.arrInt(ArrInt(arr))
+  def frPyArrInt(cls, arr): return cls._arrInt(ArrInt.frPy(arr))
 
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> 'Dyn':
@@ -355,7 +364,7 @@ class TyEnv:
   def __init__(self):
     self.tys = {
         b'Int': Int,
-        b'Bytes': Bytes,
+        b'Data': Data,
     }
 
   def arr(self, ty: Any) -> ArrBase:
