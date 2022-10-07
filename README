@@ -287,8 +287,8 @@ Zoa types are specified in a language similar to protobufs, with a few key
 differences. For an overview:
 
 Native types include:
-* Data, Int, Num, TimeMilli (unix time in milliseconds, can be negative), Path
-  (i.e. file path)
+* Data, Int, Num, Time (integers: seconds, microseconds), Path
+  (array of components)
 * Arr(generic)
 * IntMap(Int key, generic value), DataMap(Data key, generic value)
 * Dyn: dynamic (runtime) type
@@ -338,14 +338,53 @@ enum Food [
 ```
 
 The enum protocol is:
-* The first item contains the enum variant, i.e. none, someNuts, etc.
+* The first item contains the enum variant, i.e. noaccount, user, admin
 * If the variant is not an `Arr` or `*Map`, the next item is the value.
 * else, the next N values are the data for the array.
 
-Some Notes:
-* The Dyn type is an arr. `@0` contains a meta byte specifying the type. The
-  following are supported: any non-generic (except Dyn), Arr[Dyn], IntMap[Dyn],
-  DataMap[Dyn].
+
+{***
+*} |h3 Dyn type|
+The Dyn type is essentially an enum, shown below.
+
+It is intended both as a light signal for rendering, as well as for data
+transmission. It's primary purpose is in log messages where human readable
+output is important but the effort to create a structured format is too great
+for the payoff. 95%+ of such cases can be solved with the following.
+
+|==
+enum Dyn {
+  dynStr: Data,           \ 1 render utf-8
+  dynData: Data,          \ 2 render hex bytes (big-endian)
+  dynInt: Int,            \ 3 render decimal
+  dynNum: Num,            \ 4 render float
+  dynTime: Time           \ 5 render timestamp
+  dynDuration: Num        \ 6 render duration (seconds)
+  dynPath: Path           \ 7 render /unix/path
+
+  dynArrDyn: Arr[Dyn]     \ 0x20
+  dynArrInt: Arr[Int]     \ 0x21
+  dynArr[native]          \ 0x20 + native (i.e. 0x24 for Num)
+
+  dynIntMap: IntMap[Dyn]  \ 0x40
+  dynIntMap[native]       \ 0x40 + native
+
+  dynStrMap: DataMap[Dyn] \ 0x60
+  dynStrMap[native]       \ 0x60 + native
+}
+==
+
+{***
+*} |h3 Path type|
+The path type is an array. If the first path item is empty it is a root path
+(i.e. /foo/bar). If the first item is not empty it is a relative path
+(i.e. foo/bar). There are no other rules.
+
+
+{***
+*} |h3 Num type|
+The Num type is an array of length two containing the value and mantissa. The
+result is `value * 2^mantissa`. Both the value and mantissa can be negative.
 
 {**************
 *} |h2 LICENSING|

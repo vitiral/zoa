@@ -138,6 +138,14 @@ class TestZoaTy(TestBase):
     assert bm.toZ() == ZoaRaw.new_data(b'\x13')
     assert bm.frZ(bm.toZ()) == bm
 
+  def test_dyn(self):
+    i = Dyn._int(4)
+    assert i.ty == DynType.Int
+    i = Dyn.frPy(4)
+    assert i.ty == DynType.Int
+    assert i.value == 4
+    assert i.frZ(i.toZ()) == i
+
 def tokens(buf):
   out, p = [], Parser(buf)
   while p.i < len(buf):

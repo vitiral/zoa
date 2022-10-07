@@ -174,6 +174,15 @@ class Bytes(bytes):
   def frZ(cls, raw: ZoaRaw) -> "Bytes": return cls(raw.data)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
 
+class Str(bytes):
+  name = 'Str'
+
+  @classmethod
+  def frPy(cls, *args, **kwargs): return cls(*args, **kwargs)
+  @classmethod
+  def frZ(cls, raw: ZoaRaw) -> "Str": return cls(raw.data.encode('utf-8'))
+  def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self.decode('utf-8'))
+
 @dataclass
 class StructField:
   ty: Any
@@ -186,6 +195,10 @@ class ArrBase(list):
   @classmethod
   def frZ(cls, raw: ZoaRaw): return cls(cls._ty.frZ(z) for z in raw.arr)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
+
+ArrStr   = type('ArrStr', (ArrBase,),   {'_ty': Str,   'name': 'ArrStr'})
+ArrBytes = type('ArrBytes', (ArrBase,), {'_ty': Bytes, 'name': 'ArrBytes'})
+ArrInt   = type('ArrInt', (ArrBase,),   {'_ty': Int,   'name': 'ArrInt'})
 
 @dataclass(init=False)
 class StructBase:
@@ -271,6 +284,70 @@ class BitmapBase:
   @classmethod
   def frZ(cls, z: ZoaRaw) -> 'BitmapBase': return cls(int(Int.frZ(z)))
   def toZ(self) -> ZoaRaw: return Int(self.value).toZ()
+
+
+class DynType(Enum):
+  Unknown = 0
+  Str = 1
+  Bytes = 2
+  Int = 3
+  Num = 4
+  Time = 5
+  Duration = 6
+  Path = 7
+
+  ArrDyn = 0x20
+  ArrStr = 0x21
+  ArrBytes = 0x22
+  ArrInt = 0x23
+
+dynFrZMethod = {
+  DynType.Str: lambda r: r.data.decode('utf-8'),
+  DynType.Bytes: lambda r: r.data,
+  DynType.Int: Int.frZ,
+  DynType.ArrStr: ArrStr.frZ,
+  DynType.ArrBytes: ArrBytes.frZ,
+  DynType.ArrInt: ArrInt.frZ,
+}
+
+@dataclass
+class Dyn:
+  value: Any
+  ty: DynType
+  name = "Dyn"
+
+  @classmethod
+  def _str(cls, v): return cls(value=v, ty=DynType.Str)
+  @classmethod
+  def _data(cls, v): return cls(value=v, ty=DynType.Bytes)
+  @classmethod
+  def _int(cls, v): return cls(value=v, ty=DynType.Int)
+  @classmethod
+  def _arrInt(cls, v): return cls(value=v, ty=DynType.ArrInt)
+
+  @classmethod
+  def frPy(cls, arg):
+    if(isinstance(arg, str)): return cls._str(Str(arg))
+    if(isinstance(arg, bytes)): return cls._data(Bytes(arg))
+    if(isinstance(arg, int)): return cls._int(Int(arg))
+    raise TypeError(arg)
+  @classmethod
+  def arrIntFrPy(cls, arr): return cls.arrInt(ArrInt(arr))
+
+  @classmethod
+  def frZ(cls, raw: ZoaRaw) -> 'Dyn':
+    if len(raw.arr) != 2: raise TypeError(raw)
+    ty = DynType(Int.frZ(raw.arr[0]))
+    return cls(value=dynFrZMethod[ty](raw.arr[1]), ty=ty)
+
+  def toZ(self) -> ZoaRaw:
+    return ZoaRaw.new_arr([
+      Int(self.ty.value).toZ(),
+      self.value.toZ(),
+    ])
+
+# Regster final dyn conversion
+dynFrZMethod[DynType.ArrDyn] = Dyn.frZ
 
 def modname(mod, name): return mod + '.' + name if mod else name
 
