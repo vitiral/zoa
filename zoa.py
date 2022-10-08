@@ -181,7 +181,7 @@ class Data(bytes):
 
     for i, b in enumerate(self):
       out.extend(b'%.2X' % b)
-      if e == 2 and i != len(self) - 1: out.extend(b' '); e = 1
+      if e == 2 and i != len(self) - 1: out.extend(b'_'); e = 1
       else:                                               e += 1
     return out.decode('utf-8')
 
@@ -191,8 +191,8 @@ class Str(str):
   @classmethod
   def frPy(cls, *args, **kwargs): return cls(*args, **kwargs)
   @classmethod
-  def frZ(cls, raw: ZoaRaw) -> "Str": return cls(raw.data.encode('utf-8'))
-  def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self.decode('utf-8'))
+  def frZ(cls, raw: ZoaRaw) -> "Str": return cls(raw.data.decode('utf-8'))
+  def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self.encode('utf-8'))
 
 @dataclass
 class StructField:
@@ -207,9 +207,15 @@ class ArrBase(list):
   def frZ(cls, raw: ZoaRaw): return cls(cls._ty.frZ(z) for z in raw.arr)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
 
-ArrStr   = type('ArrStr', (ArrBase,),   {'_ty': Str,   'name': 'ArrStr'})
-ArrData = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
-ArrInt   = type('ArrInt', (ArrBase,),   {'_ty': Int,   'name': 'ArrInt'})
+  def __repr__(self):
+    out = []
+    for v in self:
+      out.append(repr(v))
+    return '[' + ', '.join(out) + ']'
+
+ArrStr   = type('ArrStr', (ArrBase,),  {'_ty': Str,  'name': 'ArrStr'})
+ArrData  = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
+ArrInt   = type('ArrInt', (ArrBase,),  {'_ty': Int,  'name': 'ArrInt'})
 
 @dataclass(init=False)
 class StructBase:
@@ -298,7 +304,7 @@ class BitmapBase:
 
 
 class DynType(Enum):
-  Dyn   = 0
+  Empty = 0
   Str   = 1
   Data  = 2
   Int   = 3
@@ -307,7 +313,7 @@ class DynType(Enum):
 
   ArrDyn   = 0x20
   ArrStr   = 0x21
-  ArrData = 0x22
+  ArrData  = 0x22
   ArrInt   = 0x23
 
 dynFrZMethod = {
@@ -325,6 +331,8 @@ class Dyn:
   ty: DynType
   name = "Dyn"
 
+  @classmethod
+  def _none(cls): return cls(value=None, ty=DynType.Empty)
   @classmethod
   def _str(cls, v): return cls(value=v, ty=DynType.Str)
   @classmethod
@@ -345,6 +353,7 @@ class Dyn:
 
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> 'Dyn':
+    if not len(raw.arr): return cls._none()
     if len(raw.arr) != 2: raise TypeError(raw)
     ty = DynType(Int.frZ(raw.arr[0]))
     return cls(value=dynFrZMethod[ty](raw.arr[1]), ty=ty)
@@ -363,8 +372,10 @@ def modname(mod, name): return mod + '.' + name if mod else name
 class TyEnv:
   def __init__(self):
     self.tys = {
-        b'Int': Int,
+        b'Str': Str,
         b'Data': Data,
+        b'Int': Int,
+        b'Dyn': Dyn,
     }
 
   def arr(self, ty: Any) -> ArrBase:

@@ -75,11 +75,13 @@ class TestZoaTy(TestBase):
     assert b'\x00' == z.arr[0].data
     assert b'\x09' == z.arr[9].data
     assert ai == ArrInt.frZ(z)
+    assert repr(ai) == '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]'
 
   def test_data(self):
     b = Data(b'abc 123')
     assert b'abc 123' == b.toZ().data
     assert b == Data.frZ(ZoaRaw.new_data(b'abc 123'))
+    assert repr(b) == '  61_6263_2031_3233'
 
   def test_struct(self):
     ty = self.env.struct(None, b'foo', [
@@ -162,7 +164,7 @@ class TestParse(TestBase):
 
   def test_data(self):
     b = Data(b'hi there bob!')
-    expected = '  68 6920 7468 6572 6520 626F 6221'
+    expected = '  68_6920_7468_6572_6520_626F_6221'
     result = repr(b)
     assert expected == result
 
@@ -203,6 +205,7 @@ class TestParse(TestBase):
     ab = Ab(a = 1, b = b'hi')
     assert ab.a == 1
     assert ab.b == b'hi'
+    assert repr(ab) == "Ab(a=1, b=b'hi')"
 
   def test_struct_inner(self):
     p = Parser(b'struct Foo [a: Int]\nstruct Bar[a: Int; f: Foo]')
