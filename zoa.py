@@ -165,6 +165,8 @@ class Int(int):
     if self >= 0: return z
     return ZoaRaw.new_arr([z])
 
+  def toPy(self) -> 'Int': return self
+
 class Data(bytes):
   name = 'Data'
 
@@ -173,6 +175,7 @@ class Data(bytes):
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> "Data": return cls(raw.data)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self)
+  def toPy(self) -> 'Data': return self
 
   def __repr__(self):
     out = bytearray()
@@ -193,6 +196,7 @@ class Str(str):
   @classmethod
   def frZ(cls, raw: ZoaRaw) -> "Str": return cls(raw.data.decode('utf-8'))
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self.encode('utf-8'))
+  def toPy(self) -> 'Str': return self
 
 @dataclass
 class StructField:
@@ -206,6 +210,7 @@ class ArrBase(list):
   @classmethod
   def frZ(cls, raw: ZoaRaw): return cls(cls._ty.frZ(z) for z in raw.arr)
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
+  def toPy(self) -> list: return [v.toPy() for v in self]
 
   def __repr__(self):
     out = []
@@ -251,6 +256,13 @@ class StructBase:
       else: out.append(ZoaRaw.new_arr([f.zid, self.get(name).toZ()]))
     return ZoaRaw.new_arr(out)
 
+  def toPy(self) -> dict:
+    out = {}
+    for name, f in self._fields:
+      name = name.decode('utf-8')
+      out[name] = getattr(self, name).toPy()
+    return out
+
 @dataclass(init=False)
 class EnumBase:
   @classmethod
@@ -269,6 +281,8 @@ class EnumBase:
         variant, value = i, v
     if variant is None: raise ValueError("No variant set")
     return ZoaRaw.new_arr([Int(variant).toZ(), value.toZ()])
+
+  def toPy(self) -> Enum: return self
 
 @dataclass
 class BmVar: # Bitmap Variant
@@ -301,6 +315,7 @@ class BitmapBase:
   @classmethod
   def frZ(cls, z: ZoaRaw) -> 'BitmapBase': return cls(int(Int.frZ(z)))
   def toZ(self) -> ZoaRaw: return Int(self.value).toZ()
+  def toPy(self) -> 'BitmapBase': return self
 
 
 class DynType(Enum):
@@ -363,6 +378,11 @@ class Dyn:
       Int(self.ty.value).toZ(),
       self.value.toZ(),
     ])
+
+  def toPy(self) -> Any: return self.value.toPy()
+
+  def __repr__(self):    return repr(self.value)
+
 
 # Regster final dyn conversion
 dynFrZMethod[DynType.ArrDyn] = Dyn.frZ

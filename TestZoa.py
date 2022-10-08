@@ -139,11 +139,13 @@ class TestZoaTy(TestBase):
     assert i.ty == DynType.Int
     assert i.value == 4
     assert i.frZ(i.toZ()) == i
+    assert repr(i) == '4'
 
   def test_dynArr(self):
     a = Dyn.frPyArrInt([1, 2, 3, 4])
     assert a.value == [1, 2, 3, 4]
     assert a.frZ(a.toZ()) == a
+    assert repr(a) == '[1, 2, 3, 4]'
 
 def tokens(buf):
   out, p = [], Parser(buf)
