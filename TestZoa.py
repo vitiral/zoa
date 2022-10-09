@@ -94,9 +94,9 @@ class TestZoaTy(TestBase):
     assert repr(b) == '  61_6263_2031_3233'
 
   def test_struct(self):
-    ty = self.env.struct(None, b'foo', [
+    ty = self.env.struct(None, b'foo', odict([
         (b'a', StructField(Int)),
-    ])
+    ]))
     z = ZoaRaw.new_arr([
         Int(1).toZ(),  # numPositional
         Int(0x77).toZ(), # value of 'a'
@@ -218,15 +218,17 @@ class TestParse(TestBase):
     p = Parser(b'struct foo [a: Int]')
     p.parse()
     foo = p.env.tys[b'foo']
-    assert foo._fields == [(b'a', StructField(Int))]
+    assert foo._fields == odict([
+      (b'a', StructField(Int)),
+    ])
 
     p = Parser(b'struct Ab [a: Int; b: Data]')
     p.parse()
     Ab = p.env.tys[b'Ab']
-    assert Ab._fields == [
+    assert Ab._fields == odict([
       (b'a', StructField(Int)),
       (b'b', StructField(Data)),
-    ]
+    ])
     ab = Ab(a = 1, b = b'hi')
     assert ab.a == 1
     assert ab.b == b'hi'
@@ -237,10 +239,10 @@ class TestParse(TestBase):
     p.parse()
     Foo = p.env.tys[b'Foo']
     Bar = p.env.tys[b'Bar']
-    assert Bar._fields == [
+    assert Bar._fields == odict([
       (b'a', StructField(Int)),
       (b'f', StructField(Foo)),
-    ]
+    ])
 
   def test_enum(self):
     p = Parser(b'enum E \\comment [a: Int; b: Data]')
