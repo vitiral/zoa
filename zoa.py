@@ -1,3 +1,11 @@
+"""
+Zoa single file library (https://github.com/civboot/zoa)
+
+Zoa is part of the civboot.org project and is released to the public domain
+or licensed MIT under your discression.
+
+Modify this file in any way you wish. Contributions are welcome.
+"""
 import io
 import unittest
 import dataclasses
@@ -441,20 +449,21 @@ dynFrZMethod[DynType.MapData] = MapDataDyn.frZ
 
 def _frPyArrDyn(cls, arr): return cls._arrDyn(ArrDyn.frPy(arr))
 
-
 def modname(mod, name): return mod + '.' + name if mod else name
 
 class TyEnv:
   def __init__(self):
     self.tys = {
-        b'Str': Str,
-        b'Data': Data,
-        b'Int': Int,
-        b'Dyn': Dyn,
-        b'ArrDyn': ArrDyn,
-        b'ArrStr': ArrStr,
-        b'ArrData': ArrData,
-        b'ArrInt': ArrInt,
+      b'Str': Str,
+      b'Data': Data,
+      b'Int': Int,
+      b'Dyn': Dyn,
+      b'ArrDyn': ArrDyn,
+      b'ArrStr': ArrStr,
+      b'ArrData': ArrData,
+      b'ArrInt': ArrInt,
+      b'MapStrDyn': MapStrDyn,
+      b'MapDataDyn': MapDataDyn,
     }
 
   def arr(self, ty: Any) -> ArrBase:
