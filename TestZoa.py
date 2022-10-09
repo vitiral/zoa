@@ -147,6 +147,21 @@ class TestZoaTy(TestBase):
     assert a.frZ(a.toZ()) == a
     assert repr(a) == '[1, 2, 3, 4]'
 
+  def test_dynComplex(self):
+    case = [
+      b'\x20', # ArrDyn
+      [[ b'\x02',   b'\x48'], # DynData    = '\x48'
+       [ b'\x22', []]]        # DynArrData = []
+    ]
+    z = ZoaRaw.frPy(case)
+    print()
+    print(z)
+    # d = Dyn.frZ(z)
+    arrData = Dyn.frPyArrData([])
+    expected = Dyn.frPyArrDyn([b'\x48', arrData])
+    assert expected.toZ() == z
+    assert expected == Dyn.frZ(z)
+
 def tokens(buf):
   out, p = [], Parser(buf)
   while p.i < len(buf):
