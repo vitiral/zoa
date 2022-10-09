@@ -169,12 +169,12 @@ def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
     prev_ty = ty
 
 @dataclass
-class Undeclared:
-  """Undeclared type."""
+class Undefined:
+  """Undefined type."""
   name: str
 
-def updateUndeclared(prevTy, newTyName, newTy):
-  if not isinstance(prevTy, Undeclared): return prevTy
+def updateUndefined(prevTy, newTyName, newTy):
+  if not isinstance(prevTy, Undefined): return prevTy
   if newTy == prevTy:                    return prevTy
   if newTyName == prevTy.name:           return newTy
   else:                                  return prevTy
@@ -238,8 +238,9 @@ class ArrBase(list):
   def toPy(self) -> list: return [v.toPy() for v in self]
   def __repr__(self): return reprArr(self)
 
-  def _declare(self, name, ty):
-    self._ty = updateUndeclared(self._ty, name, ty)
+  @classmethod
+  def _define(cls, name, ty):
+    cls._ty = updateUndefined(cls._ty, name, ty)
 
 ArrStr  = type('ArrStr', (ArrBase,),  {'_ty': Str,  'name': 'ArrStr'})
 ArrData = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
@@ -272,17 +273,18 @@ class MapBase(odict):
   def toPy(self) -> odict: return odict((k.toPy(), v.toPy()) for k, v in self.items())
   def __repr__(self): return repr(self.toPy())
 
-  def _declare(self, name, ty):
-    self._vty = updateUndeclared(self._vty, name, ty)
-    self._kty = updateUndeclared(self._kty, name, ty)
+  @classmethod
+  def _define(cls, name, ty):
+    cls._vty = updateUndefined(cls._vty, name, ty)
+    cls._kty = updateUndefined(cls._kty, name, ty)
 
 @dataclass
 class StructField:
   ty: Any
   zid: int = None
 
-  def _declare(self, name, ty):
-    self.ty = updateUndeclared(self.ty, name, ty)
+  def _define(self, name, ty):
+    self.ty = updateUndefined(self.ty, name, ty)
 
 @dataclass(init=False)
 class StructBase:
@@ -325,16 +327,17 @@ class StructBase:
       out[name] = getattr(self, name).toPy()
     return out
 
-  def _declare(self, name, ty):
-    for f in self._fields.values():
-      f._declare(name, ty)
+  @classmethod
+  def _define(cls, name, ty):
+    for f in cls._fields.values():
+      f._define(name, ty)
 
 @dataclass
 class EnumVar:
   ty: Any
 
-  def _declare(self, name, ty):
-    self.ty = updateUndeclared(self.ty, name, ty)
+  def _define(self, name, ty):
+    self.ty = updateUndefined(self.ty, name, ty)
 
 @dataclass(init=False)
 class EnumBase:
@@ -357,6 +360,11 @@ class EnumBase:
     return ZoaRaw.new_arr([Int(variant).toZ(), value.toZ()])
 
   def toPy(self) -> Enum: return self
+
+  @classmethod
+  def _define(cls, name, ty):
+    for _n, v in cls._variants:
+      v._define(name, ty)
 
 @dataclass
 class BmVar: # Bitmap Variant
@@ -516,9 +524,19 @@ class TyEnv:
     self.tys[name] = mapTy
     return mapTy
 
+  def undefined(self, name):
+    existing = self.tys.get(name)
+    if existing: raise ValueError(f"Declaring already defined type: {name}")
+    if existing: return existing
+    ty = Undefined(name)
+    self.tys[name] = ty
+    return ty
+
   def struct(self, mod: bytes, name: bytes, fields: Dict[bytes, StructField]):
     mn = modname(mod, name)
-    if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
+    undefined = self.tys.get(mn)
+    if isinstance(undefined, Undefined): pass
+    elif mn in self.tys: raise KeyError(f"Modname {mn} already exists")
     ty = dataclasses.make_dataclass(
       name.decode('utf-8'),
       [(n.decode('utf-8'), f.ty) for (n, f) in fields.items()],
@@ -526,12 +544,13 @@ class TyEnv:
     )
     ty.name = mn
     ty._fields = fields
-    self.tys[mn] = ty
-    return ty
+    return self._register(mn, ty, undefined)
 
   def enum(self, mod: bytes, name: bytes, variants: List[Tuple[bytes, Any]]):
     mn = modname(mod, name)
-    if mn in self.tys: raise KeyError(f"Modname {mn} already exists")
+    undefined = self.tys.get(mn)
+    if isinstance(undefined, Undefined): pass
+    elif mn in self.tys: raise KeyError(f"Modname {mn} already exists")
     ty = dataclasses.make_dataclass(
       name.decode('utf-8'),
       [
@@ -542,8 +561,7 @@ class TyEnv:
     )
     ty.name = mn
     ty._variants = variants
-    self.tys[mn] = ty
-    return ty
+    return self._register(mn, ty, undefined)
 
   def bitmap(self, mod: bytes, name: bytes, variants: List[Tuple[bytes, BmVar]]):
     mn = modname(mod, name)
@@ -557,6 +575,17 @@ class TyEnv:
     ty = type(name.decode('utf-8'), (BitmapBase,), methods)
     self.tys[mn] = ty
     return ty
+
+  def _register(self, name, ty, undefined):
+    self.tys[name] = ty
+    if undefined: self._define(name, ty)
+    return ty
+
+  def _define(self, name, ty):
+    for v in self.tys.values():
+      if hasattr(v, '_define'):
+        print(v)
+        v._define(name, ty)
 
 SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '(', ')', '[', ']']}
 
@@ -703,6 +732,9 @@ class Parser:
     if t.startswith(b'0x'): return int(t[2:], 16)
     return int(t, 10)
 
+  def parseDeclare(self) -> Undefined:
+    return self.env.undefined(self.token())
+
   def parseStruct(self) -> StructBase:
     name, fields = self._parseStruct()
     return self.env.struct(self.mod, name, fields)
@@ -737,6 +769,7 @@ class Parser:
     while self.i < len(self.buf):
       token = self.token()
       if not token: break
+      if token == b'declare': self.parseDeclare()
       if token == b'struct': self.parseStruct()
       if token == b'enum': self.parseEnum()
       if token == b'bitmap': self.parseBitmap()

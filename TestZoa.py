@@ -262,5 +262,27 @@ class TestParse(TestBase):
       (b'b', BmVar(2, 7)),
     ]
 
+  def test_declare(self):
+    p = Parser(
+    b'''
+    declare E;
+    declare S;
+    struct A [ e: E ];
+    enum   B [ s: S ];
+
+    enum   E [a: Int];
+    struct S [a: Int];
+    ''')
+    p.parse()
+    A = p.env.tys[b'A']
+    B = p.env.tys[b'B']
+    E = p.env.tys[b'E']
+    S = p.env.tys[b'S']
+
+    assert A._fields == {b'e': StructField(E)}
+    assert S._fields == {b'a': StructField(Int)}
+    assert B._variants == [(b's', EnumVar(S))]
+    assert E._variants == [(b'a', EnumVar(Int))]
+
 if __name__ == '__main__':
   unittest.main()
