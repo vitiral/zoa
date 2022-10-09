@@ -107,8 +107,8 @@ class TestZoaTy(TestBase):
 
   def test_enum(self):
     ty = self.env.enum(None, b'en', [
-        (b'a',     Int),
-        (b'b',     Data),
+      (b'a',     EnumVar(Int)),
+      (b'b',     EnumVar(Data)),
     ])
     en = ty(a=Int(3))
     assert en.b is None;    assert 3 == en.a
@@ -249,8 +249,8 @@ class TestParse(TestBase):
     p.parse()
     E = p.env.tys[b'E']
     assert E._variants == [
-      (b'a', Int),
-      (b'b', Data),
+      (b'a', EnumVar(Int)),
+      (b'b', EnumVar(Data)),
     ]
 
   def test_bitmap(self):

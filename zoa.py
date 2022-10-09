@@ -326,19 +326,28 @@ class StructBase:
     return out
 
   def _declare(self, name, ty):
-    byId = {f.zid: (name, f.ty) for name, f in cls._fields.items()}
+    for f in self._fields.values():
+      f._declare(name, ty)
+
+@dataclass
+class EnumVar:
+  ty: Any
+
+  def _declare(self, name, ty):
+    self.ty = updateUndeclared(self.ty, name, ty)
 
 @dataclass(init=False)
 class EnumBase:
   @classmethod
   def frZ(cls, z: ZoaRaw) -> 'EnumBase':
     variant = Int.frZ(z.arr[0])
-    name, ty = cls._variants[variant]
-    return cls(**{name.decode('utf-8'): ty.frZ(z.arr[1])})
+    name, var = cls._variants[variant]
+    return cls(**{name.decode('utf-8'): var.ty.frZ(z.arr[1])})
 
   def toZ(self) -> ZoaRaw:
     variant, value = None, None
-    for i, (n, ty) in enumerate(self._variants):
+    for i, (n, v) in enumerate(self._variants):
+      ty = v.ty
       v = getattr(self, n.decode('utf-8'))
       if v:
         if variant is not None: raise ValueError(
@@ -701,7 +710,7 @@ class Parser:
   def parseEnum(self) -> EnumBase:
     name, fields = self._parseStruct()
     # TODO: handle zid
-    return self.env.enum(self.mod, name, [(n, f.ty) for (n, f) in fields.items()])
+    return self.env.enum(self.mod, name, [(n, EnumVar(f.ty)) for (n, f) in fields.items()])
 
   def parseBitmap(self) -> BitmapBase:
     name = self.token()
