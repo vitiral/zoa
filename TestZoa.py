@@ -69,13 +69,23 @@ class TestZoaTy(TestBase):
     assert -0x42 == Int.frZ(ZoaRaw.new_arr([ZoaRaw.new_data(b'\x42')]))
 
   def test_arr_int(self):
-    ArrInt = self.env.arr(Int)
     ai = ArrInt.frPy(range(10))
     z = ai.toZ()
     assert b'\x00' == z.arr[0].data
     assert b'\x09' == z.arr[9].data
     assert ai == ArrInt.frZ(z)
     assert repr(ai) == '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]'
+
+  def test_map(self):
+    MapStrInt = self.env.map(Str, Int)
+    m = MapStrInt.frPy({"foo": 3, "bar": 7})
+    z = m.toZ()
+    assert b'foo'  == z.arr[0].data
+    assert b'\x03' == z.arr[1].data
+    assert b'bar'  == z.arr[2].data
+    assert b'\x07' == z.arr[3].data
+    result = MapStrInt.frZ(z)
+    assert m == result
 
   def test_data(self):
     b = Data(b'abc 123')
@@ -154,13 +164,11 @@ class TestZoaTy(TestBase):
        [ b'\x22', []]]        # DynArrData = []
     ]
     z = ZoaRaw.frPy(case)
-    print()
-    print(z)
-    # d = Dyn.frZ(z)
     arrData = Dyn.frPyArrData([])
     expected = Dyn.frPyArrDyn([b'\x48', arrData])
+    result = Dyn.frZ(z)
     assert expected.toZ() == z
-    assert expected == Dyn.frZ(z)
+    assert expected == result
 
 def tokens(buf):
   out, p = [], Parser(buf)

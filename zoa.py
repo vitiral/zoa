@@ -2,6 +2,8 @@ import io
 import unittest
 import dataclasses
 
+from collections import OrderedDict as odict
+from collections.abc import Hashable
 from enum import Enum
 from typing import Any, Dict, List, Tuple, Iterable
 from dataclasses import dataclass
@@ -214,7 +216,6 @@ class StructField:
   ty: Any
   zid: int = None
 
-@dataclass(init=False)
 class ArrBase(list):
   @classmethod
   def frPy(cls, l: Iterable[Any]): return cls([cls._ty.frPy(i) for i in l])
@@ -224,9 +225,36 @@ class ArrBase(list):
   def toPy(self) -> list: return [v.toPy() for v in self]
   def __repr__(self): return reprArr(self)
 
-ArrStr   = type('ArrStr', (ArrBase,),  {'_ty': Str,  'name': 'ArrStr'})
-ArrData  = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
-ArrInt   = type('ArrInt', (ArrBase,),  {'_ty': Int,  'name': 'ArrInt'})
+ArrStr  = type('ArrStr', (ArrBase,),  {'_ty': Str,  'name': 'ArrStr'})
+ArrData = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
+ArrInt  = type('ArrInt', (ArrBase,),  {'_ty': Int,  'name': 'ArrInt'})
+
+class MapBase(odict):
+  @classmethod
+  def frPy(cls, l: Iterable[Any]):
+    if isinstance(l, dict): l = l.items()
+    return cls(odict((cls._kty.frPy(k), cls._vty.frPy(v)) for k, v in l))
+
+  @classmethod
+  def frZ(cls, raw: ZoaRaw):
+    if len(raw.arr) % 2 != 0: raise ValueError(f"length not even: {raw}")
+    arr = iter(raw.arr)
+    out = odict()
+    while True:
+      try:
+        key = cls._kty.frZ(next(arr))
+        out[key] = cls._vty.frZ(next(arr))
+      except StopIteration: break
+    return cls(out)
+
+  def toZ(self) -> ZoaRaw:
+    def flatten():
+      for key, value in self.items():
+        yield key.toZ(); yield value.toZ()
+    return ZoaRaw.new_arr(list(flatten()))
+
+  def toPy(self) -> odict: return odict((k.toPy(), v.toPy()) for k, v in self.items())
+  def __repr__(self): return repr(self.toPy())
 
 @dataclass(init=False)
 class StructBase:
@@ -337,6 +365,9 @@ class DynType(Enum):
   ArrData  = 0x22
   ArrInt   = 0x23
 
+  MapStr   = 0x41
+  MapData  = 0x42
+
 dynFrZMethod = {
   DynType.Str: Str.frZ,
   DynType.Data: Data.frZ,
@@ -402,6 +433,12 @@ class Dyn:
 # Regster final dyn conversion
 ArrDyn   = type('ArrDyn', (ArrBase,),  {'_ty': Dyn,  'name': 'ArrDyn'})
 dynFrZMethod[DynType.ArrDyn] = ArrDyn.frZ
+
+MapStrDyn  = type('MapStrDyn', (MapBase,),  {'_vty': Str, '_kty': Dyn, 'name': 'MapStrDyn'})
+MapDataDyn = type('MapDataDyn', (MapBase,), {'_vty': Data,'_kty': Dyn, 'name': 'MapDataDyn'})
+dynFrZMethod[DynType.MapStr] = MapStrDyn.frZ
+dynFrZMethod[DynType.MapData] = MapDataDyn.frZ
+
 def _frPyArrDyn(cls, arr): return cls._arrDyn(ArrDyn.frPy(arr))
 
 
@@ -414,16 +451,29 @@ class TyEnv:
         b'Data': Data,
         b'Int': Int,
         b'Dyn': Dyn,
+        b'ArrDyn': ArrDyn,
+        b'ArrStr': ArrStr,
+        b'ArrData': ArrData,
+        b'ArrInt': ArrInt,
     }
 
   def arr(self, ty: Any) -> ArrBase:
     """Create or get generic array type."""
-    name = f'Array[{ty.name}]'
+    name = f'Arr[{ty.name}]'
     existing = self.tys.get(name)
     if existing: return existing
     arrTy = type(name, (ArrBase,), {'_ty': ty, 'name': name})
     self.tys[name] = arrTy
     return arrTy
+
+  def map(self, kty: Any, vty: Any) -> MapBase:
+    """Create or get generic map type."""
+    name = f'Map[{kty.name},{vty.name}]'
+    existing = self.tys.get(name)
+    if existing: return existing
+    mapTy = type(name, (MapBase,), {'_kty': kty, '_vty': vty, 'name': name})
+    self.tys[name] = mapTy
+    return mapTy
 
   def struct(self, mod: bytes, name: bytes, fields: List[Tuple[bytes, StructField]]):
     mn = modname(mod, name)
@@ -572,10 +622,17 @@ class Parser:
     self.need('['); ty = self.parseTy(); self.need(']')
     return self.env.arr(ty)
 
+  def parseMap(self) -> MapBase:
+    self.need('['); kty = self.parseTy();
+    self.need(','); vty = self.parseTy();
+    self.need(']')
+    if not isinstance(kty, Hashable): raise TypeError(f'Key {kty.name} is not hashable')
+    return self.env.map(kty, vty)
+
   def parseTy(self) -> Any:
     name = self.token()
-    if name == b'Arr':
-      return self.parseArr()
+    if name == b'Arr': return self.parseArr()
+    if name == b'Map': return self.parseMap()
     return self.env.tys[name]
 
   def parseField(self) -> StructField:
