@@ -385,6 +385,16 @@ class BmVar: # Bitmap Variant
       bitmapSelf.value = ((~varSelf.msk) & bitmapSelf.value) | var
     return closure
 
+  def _togVariantClosure(varSelf):
+    def closure(bitmapSelf):
+      if not varSelf.var: raise TypeError("Toggle not allowed on value=0")
+      v = varSelf.msk & bitmapSelf.value
+      if v == varSelf.var: bitmapSelf.value &= ~varSelf.msk  # clear
+      elif v == 0:         bitmapSelf.value |= varSelf.var   # set
+      else: raise ValueError(
+        f"Attempted toggle on multi-var mask at a different var: {v}")
+    return closure
+
   def _isVariantClosure(varSelf):
     def closure(bitmapSelf):
       return varSelf.msk & bitmapSelf.value == varSelf.var
@@ -413,8 +423,9 @@ class DynType(Enum):
   ArrData  = 0x22
   ArrInt   = 0x23
 
-  MapStr   = 0x41
-  MapData  = 0x42
+  MapStr    = 0x41
+  MapData   = 0x42
+  MapStrStr = 0x43
 
 dynFrZMethod = {
   DynType.Str: Str.frZ,
@@ -484,8 +495,10 @@ dynFrZMethod[DynType.ArrDyn] = ArrDyn.frZ
 
 MapStrDyn  = type('MapStrDyn', (MapBase,),  {'_vty': Str, '_kty': Dyn, 'name': 'MapStrDyn'})
 MapDataDyn = type('MapDataDyn', (MapBase,), {'_vty': Data,'_kty': Dyn, 'name': 'MapDataDyn'})
+MapStrStr  = type('MapStrStr', (MapBase,),  {'_vty': Str, '_kty': Str, 'name': 'MapStrStr'})
 dynFrZMethod[DynType.MapStr] = MapStrDyn.frZ
 dynFrZMethod[DynType.MapData] = MapDataDyn.frZ
+dynFrZMethod[DynType.MapStrStr] = MapStrStr.frZ
 
 def _frPyArrDyn(cls, arr): return cls._arrDyn(ArrDyn.frPy(arr))
 
@@ -504,6 +517,7 @@ class TyEnv:
       b'ArrInt': ArrInt,
       b'MapStrDyn': MapStrDyn,
       b'MapDataDyn': MapDataDyn,
+      b'MapStrStr': MapStrStr,
     }
 
   def arr(self, ty: Any) -> ArrBase:
@@ -572,6 +586,7 @@ class TyEnv:
       methods['get_' + n] = var._getVariantClosure()
       methods['set_' + n] = var._setVariantClosure()
       methods['is_' + n] = var._isVariantClosure()
+      methods['tog_' + n] = var._togVariantClosure()
     ty = type(name.decode('utf-8'), (BitmapBase,), methods)
     self.tys[mn] = ty
     return ty
@@ -584,7 +599,6 @@ class TyEnv:
   def _define(self, name, ty):
     for v in self.tys.values():
       if hasattr(v, '_define'):
-        print(v)
         v._define(name, ty)
 
 SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '(', ')', '[', ']']}
@@ -616,25 +630,31 @@ def coaleseTG(group: TG) -> TG:
     return TG.T_ALPHA
   return group
 
+
 class ParseError(RuntimeError):
   def __init__(self, line, msg): return super().__init__(f'line {line}: {msg}')
 
+
 @dataclass
-class Parser:
+class BaseParser:
   buf: bytearray
-  env: TyEnv = dataclasses.field(default_factory=TyEnv)
   mod: bytes = None
   i: int = 0
   line: int = 1
 
-  def error(self, msg): raise ParseError(self.line, msg)
+  # These are used by non-zoa parsers which depend on this to determine
+  # whitespace behavior.
+  skippedLines: int = 0
+  skippedSpaces: int = 0
 
-  def trackLine(self):
-      if self.buf[self.i] == ord('\n'): self.line += 1
+  def error(self, msg): raise ParseError(self.line, msg)
 
   def skipWhitespace(self):
     while self.i < len(self.buf) and TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
-      self.trackLine()
+      if self.buf[self.i] == ord('\n'):
+        self.line += 1
+        self.skippedLines += 1
+      else: self.skippedSpaces += 1
       self.i += 1
 
   def _token(self) -> bytes:
@@ -650,6 +670,29 @@ class Parser:
         return self.buf[starti:self.i]
       self.i += 1
     return self.buf[starti: self.i]
+
+  def token(self):
+    while self.i < len(self.buf):
+      t = self._token()
+      if t == b'\\': self.parseComment()
+      else: return t
+
+  def peek(self) -> bytes:
+    starti = self.i
+    out = self.token()
+    self.i = starti
+    return out
+
+  def need(self, s):
+    if self.token() != s.encode('utf-8'): self.error(f"Expected |{s}|")
+
+  def sugar(self, s):
+    if self.peek() == s.encode('utf-8'): self.token() # consume token
+
+
+@dataclass
+class Parser(BaseParser):
+  env: TyEnv = dataclasses.field(default_factory=TyEnv)
 
   def _blockComment(self):
     while self.i < len(self.buf):
@@ -669,24 +712,6 @@ class Parser:
         self.i += 1
     else: # ignore token
       self._token()
-
-  def token(self):
-    while self.i < len(self.buf):
-      t = self._token()
-      if t == b'\\': self.parseComment()
-      else: return t
-
-  def peek(self) -> bytes:
-    starti = self.i
-    out = self.token()
-    self.i = starti
-    return out
-
-  def need(self, s):
-    if self.token() != s.encode('utf-8'): self.error(f"Expected |{s}|")
-
-  def sugar(self, s):
-    if self.peek() == s.encode('utf-8'): self.token() # consume token
 
   def parseArr(self) -> ArrBase:
     self.need('['); ty = self.parseTy(); self.need(']')
@@ -769,7 +794,7 @@ class Parser:
     while self.i < len(self.buf):
       token = self.token()
       if not token: break
-      if token == b'declare': self.parseDeclare()
-      if token == b'struct': self.parseStruct()
-      if token == b'enum': self.parseEnum()
-      if token == b'bitmap': self.parseBitmap()
+      elif token == b'declare': self.parseDeclare()
+      elif token == b'struct':  self.parseStruct()
+      elif token == b'enum':    self.parseEnum()
+      elif token == b'bitmap':  self.parseBitmap()

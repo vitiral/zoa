@@ -120,13 +120,13 @@ class TestZoaTy(TestBase):
     assert ty.frZ(en.toZ()) == en
 
   def test_bitmap(self):
-    ty = self.env.bitmap(None, b'bm', [
+    Bm = self.env.bitmap(None, b'Bm', [
         (b'a',     BmVar(0x01, 0x03)),
         (b'b',     BmVar(0x03, 0x03)),
         (b'noTop', BmVar(0x00, 0x10)),
         (b'top',   BmVar(0x10, 0x10)),
     ])
-    bm = ty();       assert 0 == bm.value
+    bm = Bm();       assert 0 == bm.value
     bm.set_top();    assert 0x10 == bm.value
     bm.set_noTop();  assert 0x00 == bm.value
     bm.set_a();      assert 0x01 == bm.value
@@ -141,6 +141,11 @@ class TestZoaTy(TestBase):
     bm.set_a(0x03);  assert bm.is_b();  assert 0x13 == bm.value
     assert bm.toZ() == ZoaRaw.new_data(b'\x13')
     assert bm.frZ(bm.toZ()) == bm
+
+    bm.set_a();    assert bm.is_a();
+    bm.tog_a();    assert not bm.is_a()
+    bm.tog_a();    assert bm.is_a()
+
 
   def test_dyn(self):
     i = Dyn._int(4)
