@@ -196,7 +196,7 @@ def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
     prev_ty = ty
 
 ################################################################################
-# zty: Native Types
+# Native Types (zty)
 
 @dataclass
 class Undefined:
@@ -240,9 +240,12 @@ class Int(int):
 
   @classmethod
   def parse(cls, p: "Parser") -> "Int":
+    bracket = p.peek() == b'{'
+    if bracket: p.need('{')
     t = p.singleData()
     i = ast.literal_eval(t.decode('utf-8'))
     if not isinstance(i, int): p.error("Not an int: " + t)
+    if bracket: p.need('}')
     return cls(i)
 
 class Data(bytes):
@@ -327,7 +330,7 @@ class Str(str):
 
 
 ################################################################################
-# zty (generic) Container Types
+# Container Types (zty)
 # Note: the full type information and methods are created by the Parser.
 
 class ArrBase(list):
@@ -400,6 +403,7 @@ class MapBase(odict):
 class StructField:
   ty: Any
   zid: int = None
+  default: Any = None
 
   def _define(self, name, ty):
     self.ty = updateUndefined(self.ty, name, ty)
@@ -493,12 +497,10 @@ class EnumBase:
 
   @classmethod
   def parse(cls, p: "Parser"):
-    name = Str.parse(p)
-    nameB = name.encode('utf-8')
+    nameB = p.token(); name = nameB.decode('utf-8')
     for n, variant in cls._variants:
       if n == nameB: break
     else: p.error(f"Could not find variant: {name}")
-    p.need('=')
     kwargs = {}; kwargs[name] = variant.ty.parse(p)
     return cls(**kwargs)
 
@@ -670,6 +672,7 @@ class TyEnv:
       b'MapDataDyn': MapDataDyn,
       b'MapStrStr': MapStrStr,
     }
+    self.vals = {}
 
   def arr(self, ty: Any) -> ArrBase:
     """Create or get generic array type."""
@@ -702,9 +705,18 @@ class TyEnv:
     undefined = self.tys.get(mn)
     if isinstance(undefined, Undefined): pass
     elif mn in self.tys: raise KeyError(f"Modname {mn} already exists")
+    dfields = []
+    for n, f in fields.items():
+      n = n.decode('utf-8')
+      if f.default is None:
+        item = [n, f.ty]
+      else:
+        item = [n, f.ty, dataclasses.field(default_factory=lambda: f.default)]
+      dfields.append(item)
+
     ty = dataclasses.make_dataclass(
       name.decode('utf-8'),
-      [(n.decode('utf-8'), f.ty) for (n, f) in fields.items()],
+      dfields,
       bases=(StructBase,),
     )
     ty.name = mn
@@ -892,7 +904,10 @@ class Parser:
     name = self.token(); self.need(':')
     # TODO: handle zid case
     ty = self.parseTy()
-    return (name, StructField(ty=ty))
+    if self.peek() == b'=':
+      self.need('='); default = ty.parse(self)
+    else: default = None
+    return (name, StructField(ty=ty, default=default))
 
   def _parseStruct(self) -> (str, List[StructField]):
     name = self.token()
@@ -948,6 +963,12 @@ class Parser:
       variants.append((vname, BmVar(var, msk)))
     return self.env.bitmap(self.mod, name, variants)
 
+  def parseConst(self):
+    name = self.token(); self.need(':');
+    if name in self.env.vals: self.error(f"const {name} already defined")
+    tyName = self.token(); self.need('=')
+    self.env.vals[name] = self.env.tys[tyName].parse(self)
+
   def parse(self):
     while self.i < len(self.buf):
       token = self.token()
@@ -956,3 +977,4 @@ class Parser:
       elif token == b'struct':  self.parseStruct()
       elif token == b'enum':    self.parseEnum()
       elif token == b'bitmap':  self.parseBitmap()
+      elif token == b'const':   self.parseConst()

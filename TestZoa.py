@@ -303,6 +303,7 @@ class TestParseValue(TestBase):
   def testInt(self):
     assert 42 == Int.parse(Parser(b'42'))
     assert 0x42 == Int.parse(Parser(b'0x42'))
+    assert 0x33 == Int.parse(Parser(b'{0x33}'))
 
   def testData(self):
     expected = b'\x12\x34\x56\x78\x90'
@@ -352,11 +353,41 @@ class TestParseValue(TestBase):
   def testEnum(self):
     p = Parser(b'enum E [i: Int\ns: Str]')
     p.parse()
-    p = Parser(b'''i = 42''', env=p.env)
+    p = Parser(b'''i 42''', env=p.env)
     E = p.env.tys[b'E']
     expected = E(i = 42)
     result = E.parse(p)
     assert expected == result
+
+  def testStructDefault(self):
+    p = Parser(b'struct Foo [a: Int = 4]')
+    p.parse()
+    Foo = p.env.tys[b'Foo']
+    expected = Foo(a = 4)
+    result = Foo()
+    assert expected == result
+
+class TestParseConst(TestBase):
+  def testInt(self):
+    p = Parser(b'const a: Int = 42'); p.parse()
+    assert 42 == p.env.vals[b'a']
+
+  def testEnum(self):
+    p = Parser(b'''
+    enum E [i: Int  s: Str]
+    const i: E = i{4}
+    const s: E = s|hi there|
+    '''); p.parse(); E = p.env.tys[b'E']
+    assert E(i=4)          == p.env.vals[b'i']
+    assert E(s="hi there") == p.env.vals[b's']
+
+  def testStruct(self):
+    p = Parser(b'''
+    struct Foo [a: Int = 4]
+    const f: Foo = {a = 72}
+    '''); p.parse()
+    Foo = p.env.tys[b'Foo']
+    assert Foo(72) == p.env.vals[b'f']
 
 if __name__ == '__main__':
   unittest.main()
