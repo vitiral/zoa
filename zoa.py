@@ -18,6 +18,9 @@ from enum import Enum
 from typing import Any, Dict, List, Tuple, Iterable
 from dataclasses import dataclass
 
+################################################################################
+# Utilities and Constants
+
 ZOA_LEN_MASK = 0x3F
 ZOA_JOIN = 0x80
 ZOA_ARR = 0x40
@@ -43,6 +46,9 @@ def reprArr(arr: list):
   for v in arr:
     out.append(repr(v))
   return '[' + ', '.join(out) + ']'
+
+################################################################################
+# ZoaRaw: representing raw zoa (Data and Arr)
 
 @dataclass
 class ZoaRaw:
@@ -96,6 +102,9 @@ class ZoaRaw:
   def __repr__(self):
     if self.data is not None: return reprData(self.data)
     else:                     return reprArr(self.arr)
+
+################################################################################
+# ZoaRaw Parser
 
 def int_from_bytes(b: bytes):
   return int.from_bytes(b, 'big')
@@ -170,6 +179,9 @@ def from_zoab(br: io.BytesIO, joinTo:ZoaRaw = None):
       return out
     prev_ty = ty
 
+################################################################################
+# zty: Native Types
+
 @dataclass
 class Undefined:
   """Undefined type."""
@@ -231,6 +243,10 @@ class Str(str):
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self.encode('utf-8'))
   def toPy(self) -> 'Str': return self
 
+################################################################################
+# zty (generic) Container Types
+# Note: the full type information and methods are created by the Parser.
+
 class ArrBase(list):
   @classmethod
   def frPy(cls, l: Iterable[Any]): return cls([cls._ty.frPy(i) for i in l])
@@ -243,10 +259,6 @@ class ArrBase(list):
   @classmethod
   def _define(cls, name, ty):
     cls._ty = updateUndefined(cls._ty, name, ty)
-
-ArrStr  = type('ArrStr', (ArrBase,),  {'_ty': Str,  'name': 'ArrStr'})
-ArrData = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
-ArrInt  = type('ArrInt', (ArrBase,),  {'_ty': Int,  'name': 'ArrInt'})
 
 class MapBase(odict):
   @classmethod
@@ -411,6 +423,8 @@ class BitmapBase:
   def toZ(self) -> ZoaRaw: return Int(self.value).toZ()
   def toPy(self) -> 'BitmapBase': return self
 
+################################################################################
+# Dyn
 
 class DynType(Enum):
   Empty = 0
@@ -429,14 +443,7 @@ class DynType(Enum):
   MapData   = 0x42
   MapStrStr = 0x43
 
-dynFrZMethod = {
-  DynType.Str: Str.frZ,
-  DynType.Data: Data.frZ,
-  DynType.Int: Int.frZ,
-  DynType.ArrStr: ArrStr.frZ,
-  DynType.ArrData: ArrData.frZ,
-  DynType.ArrInt: ArrInt.frZ,
-}
+dynFrZMethod = {}  # note: updated later
 
 @dataclass
 class Dyn:
@@ -495,14 +502,29 @@ class Dyn:
 ArrDyn   = type('ArrDyn', (ArrBase,),  {'_ty': Dyn,  'name': 'ArrDyn'})
 dynFrZMethod[DynType.ArrDyn] = ArrDyn.frZ
 
+ArrStr  = type('ArrStr', (ArrBase,),  {'_ty': Str,  'name': 'ArrStr'})
+ArrData = type('ArrData', (ArrBase,), {'_ty': Data, 'name': 'ArrData'})
+ArrInt  = type('ArrInt', (ArrBase,),  {'_ty': Int,  'name': 'ArrInt'})
+
 MapStrDyn  = type('MapStrDyn', (MapBase,),  {'_vty': Str, '_kty': Dyn, 'name': 'MapStrDyn'})
 MapDataDyn = type('MapDataDyn', (MapBase,), {'_vty': Data,'_kty': Dyn, 'name': 'MapDataDyn'})
 MapStrStr  = type('MapStrStr', (MapBase,),  {'_vty': Str, '_kty': Str, 'name': 'MapStrStr'})
-dynFrZMethod[DynType.MapStr] = MapStrDyn.frZ
-dynFrZMethod[DynType.MapData] = MapDataDyn.frZ
-dynFrZMethod[DynType.MapStrStr] = MapStrStr.frZ
+dynFrZMethod.update({
+  DynType.Str: Str.frZ,
+  DynType.Data: Data.frZ,
+  DynType.Int: Int.frZ,
+  DynType.ArrStr: ArrStr.frZ,
+  DynType.ArrData: ArrData.frZ,
+  DynType.ArrInt: ArrInt.frZ,
+  DynType.MapStr: MapStrDyn.frZ,
+  DynType.MapData: MapDataDyn.frZ,
+  DynType.MapStrStr: MapStrStr.frZ,
+})
 
 def _frPyArrDyn(cls, arr): return cls._arrDyn(ArrDyn.frPy(arr))
+
+################################################################################
+# Env: this contains all native and user-defined types found during parsing.
 
 def modname(mod, name): return mod + '.' + name if mod else name
 
@@ -603,6 +625,9 @@ class TyEnv:
       if hasattr(v, '_define'):
         v._define(name, ty)
 
+################################################################################
+# Parser: parses tokens to create types
+
 SINGLES = {ord(c) for c in ['%', '\\', '$', '|', '(', ')', '[', ']']}
 
 class TG(Enum): # Token Group
@@ -632,22 +657,16 @@ def coaleseTG(group: TG) -> TG:
     return TG.T_ALPHA
   return group
 
-
 class ParseError(RuntimeError):
   def __init__(self, line, msg): return super().__init__(f'line {line}: {msg}')
 
-
 @dataclass
-class BaseParser:
+class Parser:
   buf: bytearray
   mod: bytes = None
   i: int = 0
   line: int = 1
-
-  # These are used by non-zoa parsers which depend on this to determine
-  # whitespace behavior.
-  skippedLines: int = 0
-  skippedSpaces: int = 0
+  env: TyEnv = dataclasses.field(default_factory=TyEnv)
 
   def error(self, msg): raise ParseError(self.line, msg)
 
@@ -655,8 +674,6 @@ class BaseParser:
     while self.i < len(self.buf) and TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
       if self.buf[self.i] == ord('\n'):
         self.line += 1
-        self.skippedLines += 1
-      else: self.skippedSpaces += 1
       self.i += 1
 
   def _token(self) -> bytes:
@@ -690,11 +707,6 @@ class BaseParser:
 
   def sugar(self, s):
     if self.peek() == s.encode('utf-8'): self.token() # consume token
-
-
-@dataclass
-class Parser(BaseParser):
-  env: TyEnv = dataclasses.field(default_factory=TyEnv)
 
   def _blockComment(self):
     while self.i < len(self.buf):
