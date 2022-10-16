@@ -9,6 +9,16 @@ def assert_roundtrip(v):
   result = result_zoa.to_py()
   assert v == result
 
+class TestUtils(unittest.TestCase):
+  def testExtendWithInt(self):
+    b = bytearray()
+    extendWithInt(b, 0x1234567890)
+    assert b == b'\x12\x34\x56\x78\x90'
+
+    b = bytearray()
+    extendWithInt(b, 0x123)
+    assert b == b'\x01\x23'
+
 class TestZoaRaw(unittest.TestCase):
   def test_write_str(self):
     b = io.BytesIO()
@@ -288,6 +298,65 @@ class TestParse(TestBase):
     assert S._fields == {b'a': StructField(Int)}
     assert B._variants == [(b's', EnumVar(S))]
     assert E._variants == [(b'a', EnumVar(Int))]
+
+class TestParseValue(TestBase):
+  def testInt(self):
+    assert 42 == Int.parse(Parser(b'42'))
+    assert 0x42 == Int.parse(Parser(b'0x42'))
+
+  def testData(self):
+    expected = b'\x12\x34\x56\x78\x90'
+    result = Data.parse(Parser(b'{1234 5678 90}'))
+    assert expected == result
+
+    expected = b'\x00\x45\x78'
+    result = Data.parse(Parser(b'{00 4578}'))
+    assert expected == result
+
+  def testStrSingle(self):
+    expected = "hello-bob*you-rock"
+    result = Str.parse(Parser(b'  hello-bob*you-rock'))
+    assert expected == result
+
+  def testStr(self):
+    expected = "hello\n bob you rock"
+    result = Str.parse(Parser(b'''|\\
+      hello
+    \\ bob you rock\\
+    |'''))
+    assert expected == result
+
+  def testArr(self):
+    expected = [42, 0x37, 7777]
+    result = ArrInt.parse(Parser(b'  {42, 0x37\n7777}'))
+    assert expected == result
+
+  def testMap(self):
+    expected = odict([("bob", "42"), ("rachel", "his mother")])
+    result = MapStrStr.parse(Parser(b'{\nbob = 42\nrachel = |his mother|\n}'))
+    assert expected == result
+
+  def testStruct(self):
+    p = Parser(b'struct Foo [a: Int]\nstruct Bar[a: Int; f: Foo]')
+    p.parse()
+    p = Parser(b'''{
+      a = 42
+      f = { a = 37 }
+    }''', env=p.env)
+    Foo = p.env.tys[b'Foo']
+    Bar = p.env.tys[b'Bar']
+    expected = Bar(a=42, f=Foo(a=37))
+    result = Bar.parse(p)
+    assert expected == result
+
+  def testEnum(self):
+    p = Parser(b'enum E [i: Int\ns: Str]')
+    p.parse()
+    p = Parser(b'''i = 42''', env=p.env)
+    E = p.env.tys[b'E']
+    expected = E(i = 42)
+    result = E.parse(p)
+    assert expected == result
 
 if __name__ == '__main__':
   unittest.main()

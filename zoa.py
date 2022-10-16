@@ -8,6 +8,7 @@ Modify this file in any way you wish. Contributions are welcome.
 
 Version: 0.0.1
 """
+import ast
 import io
 import unittest
 import dataclasses
@@ -46,6 +47,21 @@ def reprArr(arr: list):
   for v in arr:
     out.append(repr(v))
   return '[' + ', '.join(out) + ']'
+
+def extendWithInt(b: bytearray, i: int):
+  if i == 0: b.append(0); return
+  out = []
+  while i != 0:
+    out.append(i % 0x100)
+    i = i >> 8
+  out.reverse()
+  b.extend(out)
+
+def asciiInt(a: int) -> int:
+  if ord('0') <= a <= ord('9'): return a - ord('0')
+  if ord('a') <= a <= ord('f'): return a - ord('a')
+  if ord('A') <= a <= ord('F'): return a - ord('F')
+  return None
 
 ################################################################################
 # ZoaRaw: representing raw zoa (Data and Arr)
@@ -222,6 +238,13 @@ class Int(int):
 
   def toPy(self) -> 'Int': return self
 
+  @classmethod
+  def parse(cls, p: "Parser") -> "Int":
+    t = p.singleData()
+    i = ast.literal_eval(t.decode('utf-8'))
+    if not isinstance(i, int): p.error("Not an int: " + t)
+    return cls(i)
+
 class Data(bytes):
   name = 'Data'
 
@@ -233,6 +256,36 @@ class Data(bytes):
   def toPy(self) -> 'Data': return self
   def __repr__(self): return reprData(self)
 
+  @classmethod
+  def parse(cls, p: "Parser") -> "Data":
+    """Data must be an integer or any hexadecimal numbers inside {...}"""
+    t = p.token()
+    if not t: p.error("Unexpected EOF")
+    p.i -= len(t)
+    if p.buf[p.i] == ord('|'):
+      return cls(Str.parse(p).encode('utf-8'))
+
+    out = bytearray()
+    if t != b'{':
+      extendWithInt(out, Int.parse(p))
+      return cls(out)
+    p.need('{')
+    while True:
+      p.skipWhitespace()
+      if p.i >= len(p.buf):      p.error("Unexpected EOF waiting for '}'")
+      if p.buf[p.i] == ord('}'): break
+      if p.i + 1 >= len(p.buf):  p.error("Expecting two characters")
+      a = asciiInt(p.buf[p.i]); b = asciiInt(p.buf[p.i + 1])
+      if a is None or b is None:
+        p.error(f"Expecting two hex numbers: {p.buf[p.i:p.i+2]}")
+      out.append((a << 4) + b);
+      p.i += 2
+    p.need('}')
+    return cls(out)
+
+
+STR_ESC_LIT = {ord(c) for c in ('\\', '|', ' ')}
+
 class Str(str):
   name = 'Str'
 
@@ -242,6 +295,36 @@ class Str(str):
   def frZ(cls, raw: ZoaRaw) -> "Str": return cls(raw.data.decode('utf-8'))
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_data(self.encode('utf-8'))
   def toPy(self) -> 'Str': return self
+
+  @classmethod
+  def parse(cls, p: "Parser") -> "Str":
+    r"""Strings must be any characters without whitespace or inside {...}.
+
+    There is also escape logic (i.e. `\n`, `\t`, `\ `)
+    """
+    t = p.token(); p.i -= len(t)
+    if not t.startswith(b'|'):
+      return cls(p.singleNonWhitespace().decode('utf-8'))
+    out = bytearray()
+    escaped = False
+    p.i += 1;
+    while True:
+      if p.i >= len(p.buf): p.error("Unexpected EOF")
+      c = p.buf[p.i]; p.i += 1
+      if escaped:
+        escaped = False
+        if c in STR_ESC_LIT: out.append(c)
+        elif c == ord('\n'): p.skipWhitespace(skipNewlines=False)
+        elif c == ord('n'): out.append(ord('\n'))
+        elif c == ord('t'): out.append(ord('\t'))
+        else: p.error("Unrecognized escaped char: " + chr(c))
+      elif c == ord('\\'): escaped = True
+      elif c == ord('|'): break
+      else:
+        out.append(c)
+        if c == ord('\n'): p.skipWhitespace(skipNewlines=False)
+    return cls(out.decode('utf-8'))
+
 
 ################################################################################
 # zty (generic) Container Types
@@ -255,6 +338,16 @@ class ArrBase(list):
   def toZ(self) -> ZoaRaw: return ZoaRaw.new_arr([v.toZ() for v in self])
   def toPy(self) -> list: return [v.toPy() for v in self]
   def __repr__(self): return reprArr(self)
+
+  @classmethod
+  def parse(cls, p: "Parser"):
+    out = []
+    p.need('{')
+    while p.peek() != b'}':
+      out.append(cls._ty.parse(p))
+      p.sugar(',')
+    p.need('}')
+    return cls(out)
 
   @classmethod
   def _define(cls, name, ty):
@@ -286,6 +379,17 @@ class MapBase(odict):
 
   def toPy(self) -> odict: return odict((k.toPy(), v.toPy()) for k, v in self.items())
   def __repr__(self): return repr(self.toPy())
+
+  @classmethod
+  def parse(cls, p: "Parser"):
+    out = odict()
+    p.need('{')
+    while p.peek() != b'}':
+      k      = cls._kty.parse(p);
+      p.need('=')
+      out[k] = cls._vty.parse(p); p.sugar(',')
+    p.need('}')
+    return cls(out)
 
   @classmethod
   def _define(cls, name, ty):
@@ -342,6 +446,18 @@ class StructBase:
     return out
 
   @classmethod
+  def parse(cls, p: "Parser"):
+    kwargs = {}
+    p.need('{')
+    while p.peek() != b'}':
+      name = Str.parse(p); p.need('=')
+      if name in kwargs: p.error(f"Specified {name} twice")
+      field = cls._fields[name.encode('utf-8')]
+      kwargs[name] = field.ty.parse(p); p.sugar(',')
+    p.need('}')
+    return cls(**kwargs)
+
+  @classmethod
   def _define(cls, name, ty):
     for f in cls._fields.values():
       f._define(name, ty)
@@ -374,6 +490,17 @@ class EnumBase:
     return ZoaRaw.new_arr([Int(variant).toZ(), value.toZ()])
 
   def toPy(self) -> Enum: return self
+
+  @classmethod
+  def parse(cls, p: "Parser"):
+    name = Str.parse(p)
+    nameB = name.encode('utf-8')
+    for n, variant in cls._variants:
+      if n == nameB: break
+    else: p.error(f"Could not find variant: {name}")
+    p.need('=')
+    kwargs = {}; kwargs[name] = variant.ty.parse(p)
+    return cls(**kwargs)
 
   @classmethod
   def _define(cls, name, ty):
@@ -670,9 +797,9 @@ class Parser:
 
   def error(self, msg): raise ParseError(self.line, msg)
 
-  def skipWhitespace(self):
+  def skipWhitespace(self, skipNewlines=True):
     while self.i < len(self.buf) and TG.fromChr(self.buf[self.i]) is TG.T_WHITE:
-      if self.buf[self.i] == ord('\n'):
+      if skipNewlines and self.buf[self.i] == ord('\n'):
         self.line += 1
       self.i += 1
 
@@ -690,20 +817,37 @@ class Parser:
       self.i += 1
     return self.buf[starti: self.i]
 
-  def token(self):
+  def token(self, allowEof=False):
+    if not allowEof and self.i >= len(self.buf): self.error("Unexpected EOF")
     while self.i < len(self.buf):
       t = self._token()
       if t == b'\\': self.parseComment()
       else: return t
 
-  def peek(self) -> bytes:
+  def peek(self, allowEof=True) -> bytes:
     starti = self.i
-    out = self.token()
+    out = self.token(allowEof=allowEof)
     self.i = starti
     return out
 
   def need(self, s):
     if self.token() != s.encode('utf-8'): self.error(f"Expected |{s}|")
+
+  def singleData(self):
+    t = self.token()
+    if t != '{': return t
+    t = self.token()
+    self.need('}')
+    return t
+
+  def singleNonWhitespace(self) -> bytearray:
+    self.skipWhitespace()
+    if self.i == len(self.buf): self.error("Unexpected EOF")
+    out = bytearray()
+    while self.i < len(self.buf) and self.buf[self.i] > ord(' '):
+      out.append(self.buf[self.i])
+      self.i += 1
+    return out
 
   def sugar(self, s):
     if self.peek() == s.encode('utf-8'): self.token() # consume token
