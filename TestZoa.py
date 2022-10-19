@@ -1,6 +1,7 @@
 import io
 import unittest
 from zoa import *
+from zoa_export import *
 
 def assert_roundtrip(v):
   zoa = ZoaRaw.frPy(v)
@@ -388,6 +389,20 @@ class TestParseConst(TestBase):
     '''); p.parse()
     Foo = p.env.tys[b'Foo']
     assert Foo(72) == p.env.vals[b'f']
+
+
+STRUCT_EXPECTED = '''
+typedef struct {
+  Int a;
+}  Foo;
+'''.strip()
+
+class TestExportC(TestBase):
+  def testStruct(self):
+    p = Parser(b'''struct Foo [a: Int = 4]'''); p.parse()
+    Foo = p.env.tys[b'Foo']
+    result = c_struct(Foo)
+    assert result == STRUCT_EXPECTED
 
 if __name__ == '__main__':
   unittest.main()

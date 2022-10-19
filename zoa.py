@@ -2,11 +2,10 @@
 Zoa single file library (https://github.com/civboot/zoa)
 
 Zoa is part of the civboot.org project and is released to the public domain
-or licensed MIT under your discression.
+or licensed MIT under your discression. Modify this file in any way you wish.
+Contributions are welcome.
 
-Modify this file in any way you wish. Contributions are welcome.
-
-Version: 0.0.1
+Version: 0.0.2
 """
 import ast
 import io
