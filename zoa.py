@@ -6,7 +6,21 @@ or licensed MIT under your discression. Modify this file in any way you wish.
 Contributions are welcome.
 
 Version: 0.0.2
+
+Example use:
+
+import zoa
+
+tys = zoa.parse('path/to/types.ty')
+MyTy = tys.MyTy
+
+with open(os.path.join(PWD, '../boot/types.ty'), 'rb') as f:
+  _parser = zoa.Parser(f.read())
+_parser.parse()
+tys = _parser.env.tys
+
 """
+
 import ast
 import io
 import unittest
@@ -19,6 +33,24 @@ from typing import Any, Dict, List, Tuple, Iterable
 from dataclasses import dataclass
 
 ################################################################################
+# Primary API
+
+class AttrDict(dict):
+  """A dictionary that can be accessed with myDict.myKey.
+
+  It's still a dict.
+  """
+  __slots__ = ()
+  __getattr__ = dict.__getitem__
+  __setattr__ = dict.__setitem__
+
+def parse(path) -> AttrDict:
+  with open(path, 'rb') as f:
+    parser = Parser(f.read())
+  parser.parse()
+  return AttrDict({utf8(k): v for (k, v) in parser.env.tys.items()})
+
+################################################################################
 # Utilities and Constants
 
 ZOA_LEN_MASK = 0x3F
@@ -29,6 +61,10 @@ ZOA_DATA = 0x00
 class Eof(Exception): pass
 
 def isbytes(v): return isinstance(v, (bytes, bytearray))
+
+def utf8(b):
+  if isinstance(b, str): return b
+  return b.decode('utf-8')
 
 def reprData(data: bytes):
   out = bytearray()
@@ -246,6 +282,39 @@ class Int(int):
     if not isinstance(i, int): p.error("Not an int: " + t)
     if bracket: p.need('}')
     return cls(i)
+
+class SizedInt(Int):
+  minSize = None
+  maxSize = None
+
+  def check(self):
+    if self < self.minSize: raise ValueError(self)
+    if self > self.maxSize: raise ValueError(self)
+    return self
+
+  @classmethod
+  def frPy(cls, *args, **kwargs):
+    v = cls(*args, **kwargs)
+    return v.check()
+
+  def toZ(self) -> ZoaRaw:
+    self.check()
+    return super().toZ()
+
+  def toPy(self) -> 'Int':
+    return self.check()
+
+  @classmethod
+  def parse(cls, p: "Parser") -> Int:
+    v = super().parse(p)
+    return cls.frPy(v).check()
+
+class U1(SizedInt): name = 'U1'; minSize = 0;           maxSize = 0xFF
+class U2(SizedInt): name = 'U2'; minSize = 0;           maxSize = 0xFFFF
+class U4(SizedInt): name = 'U4'; minSize = 0;           maxSize = 0xFFFFFFFF
+class I1(SizedInt): name = 'I1'; minSize = -0x80;       maxSize = 0x7F
+class I2(SizedInt): name = 'I2'; minSize = -0x8000;     maxSize = 0x7FFF
+class I4(SizedInt): name = 'I4'; minSize = -0x80000000; maxSize = 0x7FFFFFFF
 
 class Data(bytes):
   name = 'Data'
@@ -638,18 +707,34 @@ MapStrDyn  = type('MapStrDyn', (MapBase,),  {'_vty': Str, '_kty': Dyn, 'name': '
 MapDataDyn = type('MapDataDyn', (MapBase,), {'_vty': Data,'_kty': Dyn, 'name': 'MapDataDyn'})
 MapStrStr  = type('MapStrStr', (MapBase,),  {'_vty': Str, '_kty': Str, 'name': 'MapStrStr'})
 dynFrZMethod.update({
-  DynType.Str: Str.frZ,
-  DynType.Data: Data.frZ,
-  DynType.Int: Int.frZ,
-  DynType.ArrStr: ArrStr.frZ,
-  DynType.ArrData: ArrData.frZ,
-  DynType.ArrInt: ArrInt.frZ,
-  DynType.MapStr: MapStrDyn.frZ,
-  DynType.MapData: MapDataDyn.frZ,
+  DynType.Str:       Str.frZ,
+  DynType.Data:      Data.frZ,
+  DynType.Int:       Int.frZ,
+  DynType.ArrStr:    ArrStr.frZ,
+  DynType.ArrData:   ArrData.frZ,
+  DynType.ArrInt:    ArrInt.frZ,
+  DynType.MapStr:    MapStrDyn.frZ,
+  DynType.MapData:   MapDataDyn.frZ,
   DynType.MapStrStr: MapStrStr.frZ,
 })
 
 def _frPyArrDyn(cls, arr): return cls._arrDyn(ArrDyn.frPy(arr))
+
+BASE_TYPES = {
+  b'U1': U1, b'U2': U2, b'U4': U4,
+  b'I1': I1, b'I2': I2, b'I4': I4,
+  b'Str':        Str,
+  b'Data':       Data,
+  b'Int':        Int,
+  b'Dyn':        Dyn,
+  b'ArrDyn':     ArrDyn,
+  b'ArrStr':     ArrStr,
+  b'ArrData':    ArrData,
+  b'ArrInt':     ArrInt,
+  b'MapStrDyn':  MapStrDyn,
+  b'MapDataDyn': MapDataDyn,
+  b'MapStrStr':  MapStrStr,
+}
 
 ################################################################################
 # Env: this contains all native and user-defined types found during parsing.
@@ -658,19 +743,7 @@ def modname(mod, name): return mod + '.' + name if mod else name
 
 class TyEnv:
   def __init__(self):
-    self.tys = {
-      b'Str': Str,
-      b'Data': Data,
-      b'Int': Int,
-      b'Dyn': Dyn,
-      b'ArrDyn': ArrDyn,
-      b'ArrStr': ArrStr,
-      b'ArrData': ArrData,
-      b'ArrInt': ArrInt,
-      b'MapStrDyn': MapStrDyn,
-      b'MapDataDyn': MapDataDyn,
-      b'MapStrStr': MapStrStr,
-    }
+    self.tys = AttrDict(BASE_TYPES)
     self.vals = {}
 
   def arr(self, ty: Any) -> ArrBase:

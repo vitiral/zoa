@@ -20,6 +20,16 @@ class TestUtils(unittest.TestCase):
     extendWithInt(b, 0x123)
     assert b == b'\x01\x23'
 
+  def testAttrDict(self):
+    a = AttrDict({'a': 4, 'b': 7})
+    assert ('a', 4) in list(a.items())
+    assert a.a == 4
+    assert a.b == 7
+    a.a = 5
+    assert a.a == 5
+    a.c = 7
+    assert a['c'] == 7
+
 class TestZoaRaw(unittest.TestCase):
   def test_write_str(self):
     b = io.BytesIO()
@@ -78,6 +88,11 @@ class TestZoaTy(TestBase):
     assert len(z.arr) == 1
     assert b'\x42' == z.arr[0].data
     assert -0x42 == Int.frZ(ZoaRaw.new_arr([ZoaRaw.new_data(b'\x42')]))
+
+  def test_U1(self):
+    assert b'\x42' == U1(0x42).toZ().data
+    try: U1.frPy(0x100); assert(False)
+    except ValueError: pass
 
   def test_arr_int(self):
     ai = ArrInt.frPy(range(10))
@@ -401,7 +416,7 @@ class TestExportC(TestBase):
   def testStruct(self):
     p = Parser(b'''struct Foo [a: Int = 4]'''); p.parse()
     Foo = p.env.tys[b'Foo']
-    result = c_struct(Foo)
+    result = cStruct(Foo)
     assert result == STRUCT_EXPECTED
 
 if __name__ == '__main__':

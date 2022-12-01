@@ -6,3 +6,4 @@ test:
 
 build:
 	python3 etc/cxt.py README.cxt README.md
+	gcc zoa.h -I../civc/
