@@ -80,6 +80,11 @@ class TestBase(unittest.TestCase):
     self.env = TyEnv()
 
 class TestZoaTy(TestBase):
+  def test_int0(self):
+    res = Int(0).toZ().data
+    print(res)
+    assert b'' == res
+
   def test_int(self):
     assert b'\x42' == Int(0x42).toZ().data
     assert 0x42 == Int.frZ(ZoaRaw.new_data(b'\x42'))
@@ -97,7 +102,8 @@ class TestZoaTy(TestBase):
   def test_arr_int(self):
     ai = ArrInt.frPy(range(10))
     z = ai.toZ()
-    assert b'\x00' == z.arr[0].data
+    assert b''     == z.arr[0].data # special 0
+    assert b'\x01' == z.arr[1].data
     assert b'\x09' == z.arr[9].data
     assert ai == ArrInt.frZ(z)
     assert repr(ai) == '[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]'

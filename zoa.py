@@ -261,10 +261,11 @@ class Int(int):
   def frZ(cls, raw: ZoaRaw) -> int:
     if raw.arr:
       assert 1 == len(raw.arr)
-      return -Int.from_bytes(raw.arr[0].data, byteorder='big')
-    return Int.from_bytes(raw.data, byteorder='big')
+      return -_rawInt(raw.arr[0].data)
+    return _rawInt(raw.data)
 
   def toZ(self) -> ZoaRaw:
+    if 0 == self: return ZoaRaw.new_data(b'')
     length = intBytesLen(abs(self))
     v = abs(self).to_bytes(length, byteorder='big')
     z = ZoaRaw.new_data(v)
@@ -282,6 +283,10 @@ class Int(int):
     if not isinstance(i, int): p.error("Not an int: " + t)
     if bracket: p.need('}')
     return cls(i)
+
+def _rawInt(b: bytes) -> Int:
+  if 0 == len(b): return 0
+  return Int.from_bytes(b, byteorder='big')
 
 class SizedInt(Int):
   minSize = None
