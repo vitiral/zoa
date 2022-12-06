@@ -412,18 +412,48 @@ class TestParseConst(TestBase):
     assert Foo(72) == p.env.vals[b'f']
 
 
-STRUCT_EXPECTED = '''
+A_EXPECTED = '''
 typedef struct {
-  Int a;
-}  Foo;
+  U4 a;
+}  A;
+'''.strip()
+
+A_TX_EXPECTED = '''
+void  A_txZoab(Ring* r, A* t) {
+  U4_txZoab(r, t->a);
+}
+'''.strip()
+
+B_EXPECTED = '''
+typedef struct {
+  A a;
+  U2 b;
+}  B;
+'''.strip()
+
+B_TX_EXPECTED = '''
+void  B_txZoab(Ring* r, B* t) {
+  A_txZoab(r, &t->a);
+  U4_txZoab(r, t->b);
+}
 '''.strip()
 
 class TestExportC(TestBase):
   def testStruct(self):
-    p = Parser(b'''struct Foo [a: Int = 4]'''); p.parse()
-    Foo = p.env.tys[b'Foo']
-    result = cStruct(Foo)
-    assert result == STRUCT_EXPECTED
+    r = parseBytes(b'''
+    struct A [a: U4 = 4]
+    struct B [a: A; b: U2]
+    ''');
+    A, B = r.tys.A, r.tys.B
+    result = cStruct(A)
+    methods = cStructTx(A)
+    assert result == A_EXPECTED
+    assert methods == A_TX_EXPECTED
+
+    result = cStruct(B)
+    methods = cStructTx(B)
+    assert result == B_EXPECTED
+    assert methods == B_TX_EXPECTED
 
 if __name__ == '__main__':
   unittest.main()

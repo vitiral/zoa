@@ -1,3 +1,5 @@
+const answer: U2 = 0x42;
+
 struct Empty []
 
 struct One [ a: U4 ]

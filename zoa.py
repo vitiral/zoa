@@ -44,11 +44,22 @@ class AttrDict(dict):
   __getattr__ = dict.__getitem__
   __setattr__ = dict.__setitem__
 
-def parse(path) -> AttrDict:
-  with open(path, 'rb') as f:
-    parser = Parser(f.read())
+@dataclass
+class Result:
+  tys: AttrDict
+  vals: AttrDict
+
+def parseBytes(b: bytes) -> Result:
+  parser = Parser(b)
   parser.parse()
-  return AttrDict({utf8(k): v for (k, v) in parser.env.tys.items()})
+  return Result(
+    tys = _fromBinaryAttrs(parser.env.tys),
+    vals = _fromBinaryAttrs(parser.env.vals),
+  )
+
+def parse(path) -> Result:
+  with open(path, 'rb') as f:
+    return parseBytes(f.read())
 
 ################################################################################
 # Utilities and Constants
@@ -61,6 +72,9 @@ ZOA_DATA = 0x00
 class Eof(Exception): pass
 
 def isbytes(v): return isinstance(v, (bytes, bytearray))
+
+def _fromBinaryAttrs(a: AttrDict) -> AttrDict:
+  return AttrDict((utf8(k), v) for (k, v) in a.items())
 
 def utf8(b):
   if isinstance(b, str): return b
@@ -749,7 +763,7 @@ def modname(mod, name): return mod + '.' + name if mod else name
 class TyEnv:
   def __init__(self):
     self.tys = AttrDict(BASE_TYPES)
-    self.vals = {}
+    self.vals = AttrDict()
 
   def arr(self, ty: Any) -> ArrBase:
     """Create or get generic array type."""
@@ -954,7 +968,7 @@ class Parser:
     if self.buf[self.i] == ord('('): # block comment
       self.i += 1
       self._blockComment()
-    elif self.buf[self.i] == ord(' '): # comment till EOL
+    elif self.buf[self.i] <= ord(' '): # comment till EOL
       while self.i < len(self.buf) and self.buf[self.i] != ord('\n'):
         self.i += 1
     else: # ignore token
