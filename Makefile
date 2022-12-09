@@ -9,5 +9,5 @@ test: build
 
 build:
 	mkdir -p bin/
-	python3 etc/cxt.py README.cxt README.md
+	python3 ../cxt/cxt.py README.cxt README.md
 	gcc -I. -I../civc/ ../civc/civ/civ* zoa/* -o bin/c_tests
