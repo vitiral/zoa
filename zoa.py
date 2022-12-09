@@ -328,12 +328,12 @@ class SizedInt(Int):
     v = super().parse(p)
     return cls.frPy(v).check()
 
-class U1(SizedInt): name = 'U1'; minSize = 0;           maxSize = 0xFF
-class U2(SizedInt): name = 'U2'; minSize = 0;           maxSize = 0xFFFF
-class U4(SizedInt): name = 'U4'; minSize = 0;           maxSize = 0xFFFFFFFF
-class I1(SizedInt): name = 'I1'; minSize = -0x80;       maxSize = 0x7F
-class I2(SizedInt): name = 'I2'; minSize = -0x8000;     maxSize = 0x7FFF
-class I4(SizedInt): name = 'I4'; minSize = -0x80000000; maxSize = 0x7FFFFFFF
+class U1(SizedInt, int): name = 'U1'; minSize = 0;           maxSize = 0xFF
+class U2(SizedInt, int): name = 'U2'; minSize = 0;           maxSize = 0xFFFF
+class U4(SizedInt, int): name = 'U4'; minSize = 0;           maxSize = 0xFFFFFFFF
+class I1(SizedInt, int): name = 'I1'; minSize = -0x80;       maxSize = 0x7F
+class I2(SizedInt, int): name = 'I2'; minSize = -0x8000;     maxSize = 0x7FFF
+class I4(SizedInt, int): name = 'I4'; minSize = -0x80000000; maxSize = 0x7FFFFFFF
 
 class Data(bytes):
   name = 'Data'

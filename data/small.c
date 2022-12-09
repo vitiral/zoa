@@ -17,4 +17,3 @@ typedef struct {
 void  One_txZoab(Ring* r, One* t) {
   U4_txZoab(r, t->a);
 }
-

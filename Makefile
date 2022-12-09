@@ -10,4 +10,4 @@ test: build
 build:
 	mkdir -p bin/
 	python3 ../cxt/cxt.py README.cxt README.md
-	gcc -I. -I../civc/ ../civc/civ/civ* zoa/* -o bin/c_tests
+	gcc -I. -I../civc/ ../civc/civ/civ* zoac/* -o bin/c_tests
