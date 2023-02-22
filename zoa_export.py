@@ -23,7 +23,7 @@ HEADER = '''
 * DO NOT EDIT MANUALLY
 */
 
-#include "civ/civ.h"\n
+#include "civ.h"\n
 '''
 
 def cStruct(s: zoa.StructBase):
