@@ -1,6 +1,8 @@
 [!]##########################################################################[/]
 [h1]zoa: serialized data made easy[/]
 
+["]Most content has moved to https://github.com/civboot/civlua/tree/main/zoa["]
+
 ["]This document is written using @cxt in README.cxt[/]
 
 zoa is a set of standards related to serialized structured data and it's

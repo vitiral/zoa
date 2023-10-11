@@ -1,5 +1,8 @@
 # ZoaD: dynamically typed data encoded as ZoaB
 
+> NOTE: this has been moved as part of
+> https://github.com/civboot/civlua/tree/main/zoa/README.cxt
+
 > Recall: ZoaB is an ultra-simple data format containing only `data` (raw bytes)
 > and `array` (list of zoa values). See `zoab` in [README](../README.md)
 
