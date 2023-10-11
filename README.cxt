@@ -243,7 +243,7 @@ Zoa types are specified in a language similar to protobufs, with a few key
 differences. For an overview:
 
 Native types include:[+]
- * Data, Int, Num, Time (integers: seconds, microseconds), Path
+ * Data, Int, Num, Time (integers: seconds, nanoseconds), Path
    (array of components)
  * Arr(generic)
  * IntMap(Int key, generic value), DataMap(Data key, generic value)
